@@ -280,9 +280,13 @@ static int msm_rotator_ycxcx_h2v1(struct msm_rotator_img_info *info,
 				  unsigned int in_paddr,
 				  unsigned int out_paddr,
 				  unsigned int use_imem,
-				  int new_session)
+				  int new_session,
+				  unsigned long slen,
+				  unsigned long dlen)
 {
 	int bpp;
+	int src_addr;
+	int dst_addr;
 
 	if (info->src.format != info->dst.format)
 		return -EINVAL;
@@ -292,15 +296,28 @@ static int msm_rotator_ycxcx_h2v1(struct msm_rotator_img_info *info,
 		return -ENOTTY;
 
 	iowrite32(in_paddr, MSM_ROTATOR_SRCP0_ADDR);
-	iowrite32(chroma_addr(in_paddr, info->src.width, info->src.height, bpp),
-		  MSM_ROTATOR_SRCP1_ADDR);
-	iowrite32(out_paddr +
-			((info->dst_y * info->dst.width) + info->dst_x),
-		  MSM_ROTATOR_OUTP0_ADDR);
-	iowrite32(chroma_addr(out_paddr, info->dst.width, info->dst.height,
+	src_addr = chroma_addr(in_paddr, info->src.width, info->src.height, bpp);
+	if(src_addr > in_paddr + slen) {
+		pr_err("Invalid source address");
+		return -EINVAL;
+	}
+	iowrite32(src_addr, MSM_ROTATOR_SRCP1_ADDR);
+
+	dst_addr = out_paddr + ((info->dst_y * info->dst.width) + info->dst_x);
+	if(dst_addr > out_paddr + dlen) {
+		pr_err("Invalid destination address");
+		return -EINVAL;
+	}
+	iowrite32(dst_addr, MSM_ROTATOR_OUTP0_ADDR);
+
+	dst_addr = chroma_addr(out_paddr, info->dst.width, info->dst.height,
 			      bpp) +
-			((info->dst_y * info->dst.width) + info->dst_x),
-		  MSM_ROTATOR_OUTP1_ADDR);
+			((info->dst_y * info->dst.width) + info->dst_x);
+	if(dst_addr > out_paddr + dlen) {
+		pr_err("Invalid destination address");
+		return -EINVAL;
+	}
+	iowrite32(dst_addr, MSM_ROTATOR_OUTP1_ADDR);
 
 	if (new_session) {
 		iowrite32(info->src.width |
@@ -351,9 +368,13 @@ static int msm_rotator_ycxcx_h2v2(struct msm_rotator_img_info *info,
 				  unsigned int in_paddr,
 				  unsigned int out_paddr,
 				  unsigned int use_imem,
-				  int new_session)
+				  int new_session,
+				  unsigned long slen,
+				  unsigned long dlen)
 {
 	int bpp;
+	int src_addr;
+	int dst_addr;
 
 	if (info->src.format != info->dst.format)
 		return -EINVAL;
@@ -363,15 +384,30 @@ static int msm_rotator_ycxcx_h2v2(struct msm_rotator_img_info *info,
 		return -ENOTTY;
 
 	iowrite32(in_paddr, MSM_ROTATOR_SRCP0_ADDR);
-	iowrite32(chroma_addr(in_paddr, info->src.width, info->src.height, bpp),
-		  MSM_ROTATOR_SRCP1_ADDR);
-	iowrite32(out_paddr +
-			((info->dst_y * info->dst.width) + info->dst_x),
-		  MSM_ROTATOR_OUTP0_ADDR);
-	iowrite32(chroma_addr(out_paddr, info->dst.width, info->dst.height,
+
+	src_addr = chroma_addr(in_paddr, info->src.width, info->src.height, bpp);
+	if(src_addr > in_paddr + slen) {
+		pr_err("Invalid source address");
+		return -EINVAL;
+	}
+	iowrite32(src_addr, MSM_ROTATOR_SRCP1_ADDR);
+
+	dst_addr = out_paddr + ((info->dst_y * info->dst.width) + info->dst_x);
+	if(dst_addr > out_paddr + dlen) {
+		pr_err("Invalid destination address");
+		return -EINVAL;
+	}
+	iowrite32(dst_addr, MSM_ROTATOR_OUTP0_ADDR);
+
+	dst_addr = chroma_addr(out_paddr, info->dst.width, info->dst.height,
 			      bpp) +
-			((info->dst_y * info->dst.width)/2 + info->dst_x),
-		  MSM_ROTATOR_OUTP1_ADDR);
+			((info->dst_y * info->dst.width)/2 + info->dst_x);
+	if(dst_addr > out_paddr + dlen) {
+		pr_err("Invalid destination address");
+		return -EINVAL;
+	}
+
+	iowrite32(dst_addr, MSM_ROTATOR_OUTP1_ADDR);
 
 	if (new_session) {
 		iowrite32(info->src.width |
@@ -429,10 +465,13 @@ static int msm_rotator_ycxcx_h2v2_tile(struct msm_rotator_img_info *info,
 				  unsigned int in_paddr,
 				  unsigned int out_paddr,
 				  unsigned int use_imem,
-				  int new_session)
+				  int new_session,
+				  unsigned long slen,
+				  unsigned long dlen)
 {
 	int bpp;
 	unsigned int offset = 0;
+	int dst_addr;
 	/*
 	 * each row of samsung tile consists of two tiles in height
 	 * and two tiles in width which means width should align to
@@ -454,14 +493,29 @@ static int msm_rotator_ycxcx_h2v2_tile(struct msm_rotator_img_info *info,
 	offset = tile_size(info->src.width, info->src.height, &tile);
 
 	iowrite32(in_paddr, MSM_ROTATOR_SRCP0_ADDR);
+	if(in_paddr + offset > in_paddr + slen) {
+		pr_err("Invalid source address");
+		return -EINVAL;
+	}
+
 	iowrite32(in_paddr + offset, MSM_ROTATOR_SRCP1_ADDR);
-	iowrite32(out_paddr +
-			((info->dst_y * info->dst.width) + info->dst_x),
-		  MSM_ROTATOR_OUTP0_ADDR);
-	iowrite32(chroma_addr(out_paddr, info->dst.width, info->dst.height,
+
+	dst_addr = out_paddr + ((info->dst_y * info->dst.width) + info->dst_x);
+	if(dst_addr > out_paddr + dlen) {
+		pr_err("Invalid destination address");
+		return -EINVAL;
+	}
+	iowrite32(dst_addr, MSM_ROTATOR_OUTP0_ADDR);
+
+	dst_addr = chroma_addr(out_paddr, info->dst.width, info->dst.height,
 			      bpp) +
-			((info->dst_y * info->dst.width)/2 + info->dst_x),
-		  MSM_ROTATOR_OUTP1_ADDR);
+			((info->dst_y * info->dst.width)/2 + info->dst_x);
+	if(dst_addr > out_paddr + dlen) {
+		pr_err("Invalid destination address");
+		return -EINVAL;
+	}
+
+	iowrite32(dst_addr, MSM_ROTATOR_OUTP1_ADDR);
 
 	if (new_session) {
 		iowrite32(info->src.width |
@@ -507,9 +561,12 @@ static int msm_rotator_ycrycb(struct msm_rotator_img_info *info,
 			      unsigned int in_paddr,
 			      unsigned int out_paddr,
 			      unsigned int use_imem,
-			      int new_session)
+			      int new_session,
+			      unsigned long slen,
+			      unsigned long dlen)
 {
 	int bpp;
+	int dst_addr;
 
 	if (info->src.format != info->dst.format)
 		return -EINVAL;
@@ -519,9 +576,13 @@ static int msm_rotator_ycrycb(struct msm_rotator_img_info *info,
 		return -ENOTTY;
 
 	iowrite32(in_paddr, MSM_ROTATOR_SRCP0_ADDR);
-	iowrite32(out_paddr +
-			((info->dst_y * info->dst.width) + info->dst_x),
-		  MSM_ROTATOR_OUTP0_ADDR);
+
+	dst_addr = out_paddr + ((info->dst_y * info->dst.width) + info->dst_x);
+	if(dst_addr > out_paddr + dlen) {
+		pr_err("Invalid destination address");
+		return -EINVAL;
+	}
+	iowrite32(dst_addr, MSM_ROTATOR_OUTP0_ADDR);
 
 	if (new_session) {
 		iowrite32(info->src.width,
@@ -558,9 +619,12 @@ static int msm_rotator_rgb_types(struct msm_rotator_img_info *info,
 				 unsigned int in_paddr,
 				 unsigned int out_paddr,
 				 unsigned int use_imem,
-				 int new_session)
+				 int new_session,
+				 unsigned long slen,
+				 unsigned long dlen)
 {
 	int bpp, abits, rbits, gbits, bbits;
+	int dst_addr;
 
 	if (info->src.format != info->dst.format)
 		return -EINVAL;
@@ -570,9 +634,13 @@ static int msm_rotator_rgb_types(struct msm_rotator_img_info *info,
 		return -ENOTTY;
 
 	iowrite32(in_paddr, MSM_ROTATOR_SRCP0_ADDR);
-	iowrite32(out_paddr +
-			((info->dst_y * info->dst.width) + info->dst_x) * bpp,
-		  MSM_ROTATOR_OUTP0_ADDR);
+
+	dst_addr = out_paddr + ((info->dst_y * info->dst.width) + info->dst_x) * bpp;
+	if(dst_addr > out_paddr + dlen) {
+		pr_err("Invalid destination address");
+		return -EINVAL;
+	}
+	iowrite32(dst_addr, MSM_ROTATOR_OUTP0_ADDR);
 
 	if (new_session) {
 		iowrite32(info->src.width * bpp, MSM_ROTATOR_SRC_YSTRIDE1);
@@ -701,7 +769,7 @@ static int msm_rotator_do_rotate(unsigned long arg)
 	unsigned int status;
 	struct msm_rotator_data_info info;
 	unsigned int in_paddr, out_paddr;
-	unsigned long len;
+	unsigned long slen, dlen;
 	struct file *src_file = 0;
 	struct file *dst_file = 0;
 	int use_imem = 0;
@@ -711,20 +779,30 @@ static int msm_rotator_do_rotate(unsigned long arg)
 		return -EFAULT;
 
 	rc = get_img(info.src.memory_id, (unsigned long *)&in_paddr,
-			(unsigned long *)&len, &src_file);
+			(unsigned long *)&slen, &src_file);
 	if (rc) {
 		printk(KERN_ERR "%s: in get_img() failed id=0x%08x\n",
 		       DRIVER_NAME, info.src.memory_id);
 		return rc;
 	}
+	if(info.src.offset > slen) {
+		pr_err("Invalid source offset");
+		return -EINVAL;
+	}
+
 	in_paddr += info.src.offset;
 
 	rc = get_img(info.dst.memory_id, (unsigned long *)&out_paddr,
-			(unsigned long *)&len, &dst_file);
+			(unsigned long *)&dlen, &dst_file);
 	if (rc) {
 		printk(KERN_ERR "%s: out get_img() failed id=0x%08x\n",
 		       DRIVER_NAME, info.dst.memory_id);
 		return rc;
+	}
+
+	if(info.dst.offset > dlen) {
+		pr_err("Invalid destination offset");
+		return -EINVAL;
 	}
 	out_paddr += info.dst.offset;
 
@@ -798,21 +876,27 @@ static int msm_rotator_do_rotate(unsigned long arg)
 					   in_paddr, out_paddr,
 					   use_imem,
 					   msm_rotator_dev->last_session_idx
-								!= s);
+								!= s,
+					   slen,
+					   dlen);
 		break;
 	case MDP_Y_CBCR_H2V2:
 	case MDP_Y_CRCB_H2V2:
 		rc = msm_rotator_ycxcx_h2v2(msm_rotator_dev->img_info[s],
 					    in_paddr, out_paddr, use_imem,
 					    msm_rotator_dev->last_session_idx
-								!= s);
+					    != s,
+					    slen,
+					    dlen);
 		break;
 	case MDP_Y_CRCB_H2V2_TILE:
 	case MDP_Y_CBCR_H2V2_TILE:
 		rc = msm_rotator_ycxcx_h2v2_tile(msm_rotator_dev->img_info[s],
 				in_paddr, out_paddr, use_imem,
 				msm_rotator_dev->last_session_idx
-				!= s);
+				!= s,
+				slen,
+				dlen);
 	break;
 
 	case MDP_Y_CBCR_H2V1:
@@ -820,12 +904,16 @@ static int msm_rotator_do_rotate(unsigned long arg)
 		rc = msm_rotator_ycxcx_h2v1(msm_rotator_dev->img_info[s],
 					    in_paddr, out_paddr, use_imem,
 					    msm_rotator_dev->last_session_idx
-								!= s);
+					    != s,
+					    slen,
+					    dlen);
 		break;
 	case MDP_YCRYCB_H2V1:
 		rc = msm_rotator_ycrycb(msm_rotator_dev->img_info[s],
 				in_paddr, out_paddr, use_imem,
-				msm_rotator_dev->last_session_idx != s);
+				msm_rotator_dev->last_session_idx != s,
+				slen,
+				dlen);
 		break;
 	default:
 		rc = -EINVAL;

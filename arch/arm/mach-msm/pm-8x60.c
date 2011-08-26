@@ -636,17 +636,17 @@ static void set_power_collapse_status(unsigned cpu, unsigned state)
 	mb();
 }
 
-unsigned int *tz_entry_0 =(unsigned int *) (0xFA822000 - 24);
-unsigned int *tz_exit_0 = (unsigned int *)(0xFA822000 - 32);
-unsigned int *msm_kernel_exit_0 = (unsigned int *)(0xFA822000 - 40);
-unsigned int *msm_kernel_exit_1 = (unsigned int *)(0xFA822000 - 48);
-unsigned int *tz_entry_1 =(unsigned int *) (0xFA822000 - 56);
-unsigned int *tz_exit_1 = (unsigned int *)(0xFA822000 - 64);
-unsigned int *tz_progress = (unsigned int *)(0xFA822000 - 72);
-unsigned int *tz_kernel_addr = (unsigned int *)(0xFA822000 - 80);
-unsigned int *tz_error = (unsigned int *)(0xFA822000 - 88);
-unsigned int *cpu1_pen_rejection = (unsigned int *)(0xFA822000 - 96);
-unsigned int *cpu1_wakeup_reason = (unsigned int *)(0xFA822000 - 104);
+unsigned int *tz_entry_0 =(unsigned int *) (0xFE822000 - 24);
+unsigned int *tz_exit_0 = (unsigned int *)(0xFE822000 - 32);
+unsigned int *msm_kernel_exit_0 = (unsigned int *)(0xFE822000 - 40);
+unsigned int *msm_kernel_exit_1 = (unsigned int *)(0xFE822000 - 48);
+unsigned int *tz_entry_1 =(unsigned int *) (0xFE822000 - 56);
+unsigned int *tz_exit_1 = (unsigned int *)(0xFE822000 - 64);
+unsigned int *tz_progress = (unsigned int *)(0xFE822000 - 72);
+unsigned int *tz_kernel_addr = (unsigned int *)(0xFE822000 - 80);
+unsigned int *tz_error = (unsigned int *)(0xFE822000 - 88);
+unsigned int *cpu1_pen_rejection = (unsigned int *)(0xFE822000 - 96);
+unsigned int *cpu1_wakeup_reason = (unsigned int *)(0xFE822000 - 104);
 
 static void msm_pm_spm_power_collapse(
 	struct msm_pm_device *dev, bool from_idle, bool notify_rpm)
@@ -1193,9 +1193,6 @@ int platform_cpu_kill(unsigned int cpu)
 	return wait_for_completion_timeout(killed, HZ * 5);
 }
 
-//Debug CPU1 power collapse fail issue
-extern int cpu1_ipi;
-
 void platform_cpu_die(unsigned int cpu)
 {
 	bool allow[MSM_PM_SLEEP_MODE_NR];
@@ -1235,10 +1232,6 @@ void platform_cpu_die(unsigned int cpu)
 		if (pen_release == cpu) {
 			/* OK, proper wakeup, we're done */
 			break;
-		} else {
-			//Power collapse failed, print ipi and resume IRQ
-			printk("%s: CPU1 wokeup without pen. ipi: %x\n", __func__, cpu1_ipi);
-			gic_show_resume_irq(0);
 		}
 	}
 

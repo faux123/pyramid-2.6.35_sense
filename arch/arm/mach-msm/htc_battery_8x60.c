@@ -817,6 +817,7 @@ static int __init htc_battery_init(void)
 	htc_batt_info.rep.batt_state = 0;
 	htc_batt_info.rep.temp_fault = -1;
 	htc_batt_timer.total_time_ms = 0;
+	htc_batt_timer.batt_system_jiffies = jiffies;
 	htc_batt_timer.batt_alarm_status = 0;
 	htc_batt_timer.alarm_timer_flag = 0;
 

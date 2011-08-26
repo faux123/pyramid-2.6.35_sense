@@ -331,6 +331,8 @@ static int msm_fb_probe(struct platform_device *pdev)
 
 	mfd->panel_info.frame_count = 0;
 	mfd->bl_level = 0;
+	mfd->width = msm_fb_pdata->width;
+	mfd->height = msm_fb_pdata->height;
 #ifdef CONFIG_FB_MSM_OVERLAY
 	mfd->overlay_play_enable = 1;
 
@@ -646,6 +648,42 @@ static void msmfb_early_resume(struct early_suspend *h)
 						    early_suspend);
 	msm_fb_resume_sub(mfd);
 }
+
+#ifdef CONFIG_HTC_ONMODE_CHARGING
+static void msmfb_onchg_suspend(struct early_suspend *h)
+{
+	struct msm_fb_data_type *mfd = container_of(h, struct msm_fb_data_type,
+						    onchg_suspend);
+#ifdef CONFIG_FB_MSM_OVERLAY
+	/*
+	* For MDP with overlay, set framebuffer with black pixels
+	* to show black screen on HDMI.
+	*/
+	struct fb_info *fbi = mfd->fbi;
+	switch (mfd->fbi->var.bits_per_pixel) {
+	case 32:
+		memset32_io((void *)fbi->screen_base, 0xFF000000,
+							fbi->fix.smem_len);
+		break;
+	default:
+		memset_io(fbi->screen_base, 0x00, fbi->fix.smem_len);
+		break;
+	}
+#endif
+	MSM_FB_INFO("%s starts.\n", __func__);
+	msm_fb_suspend_sub(mfd);
+	MSM_FB_INFO("%s is done.\n", __func__);
+}
+
+static void msmfb_onchg_resume(struct early_suspend *h)
+{
+	struct msm_fb_data_type *mfd = container_of(h, struct msm_fb_data_type,
+						    onchg_suspend);
+	MSM_FB_INFO("%s starts.\n", __func__);
+	msm_fb_resume_sub(mfd);
+	MSM_FB_INFO("%s is done.\n", __func__);
+}
+#endif /* CONFIG_HTC_ONMODE_CHARGING */
 #endif
 
 void msm_fb_set_backlight(struct msm_fb_data_type *mfd, __u32 bkl_lvl)
@@ -947,8 +985,8 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 	var->grayscale = 0,	/* No graylevels */
 	var->nonstd = 0,	/* standard pixel format */
 	var->activate = FB_ACTIVATE_VBL,	/* activate it at vsync */
-	var->height = -1,	/* height of picture in mm */
-	var->width = -1,	/* width of picture in mm */
+	var->height = mfd->height,	/* height of picture in mm */
+	var->width = mfd->width,	/* width of picture in mm */
 	var->accel_flags = 0,	/* acceleration flags */
 	var->sync = 0,	/* see FB_SYNC_* */
 	var->rotate = 0,	/* angle we rotate counter clockwise */
@@ -1185,6 +1223,12 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 		mfd->early_suspend.resume = msmfb_early_resume;
 		mfd->early_suspend.level = EARLY_SUSPEND_LEVEL_DISABLE_FB - 2;
 		register_early_suspend(&mfd->early_suspend);
+#ifdef CONFIG_HTC_ONMODE_CHARGING
+		mfd->onchg_suspend.suspend = msmfb_onchg_suspend;
+		mfd->onchg_suspend.resume = msmfb_onchg_resume;
+		mfd->onchg_suspend.level = EARLY_SUSPEND_LEVEL_DISABLE_FB - 2;
+		register_onchg_suspend(&mfd->onchg_suspend);
+#endif
 	}
 #endif
 
@@ -1359,12 +1403,14 @@ static int msm_fb_release(struct fb_info *info, int user)
 	mfd->ref_cnt--;
 
 	if (!mfd->ref_cnt) {
+		#if 0 // Comment out the following code for C2D "captureScreen()" feature...
 		if ((ret =
 		     msm_fb_blank_sub(FB_BLANK_POWERDOWN, info,
 				      mfd->op_enable)) != 0) {
 			printk(KERN_ERR "msm_fb_release: can't turn off display!\n");
 			return ret;
 		}
+		#endif
 	}
 
 	pm_runtime_put(info->dev);

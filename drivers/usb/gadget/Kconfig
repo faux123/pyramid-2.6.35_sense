@@ -916,6 +916,12 @@ config USB_ANDROID_RNDIS
 	help
 	  Provides RNDIS ethernet function for android gadget driver.
 
+config USB_ANDROID_ACCESSORY
+	boolean "Android USB accessory function"
+	depends on USB_ANDROID
+	help
+	  Provides Android USB Accessory support for android gadget driver.
+
 config USB_ANDROID_RMNET_SDIO
        boolean "RmNet over SDIO function driver"
        depends on USB_ANDROID && MSM_SDIO_CMUX && MSM_SDIO_DMUX

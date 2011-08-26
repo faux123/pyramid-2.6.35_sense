@@ -29,6 +29,8 @@
 static struct workqueue_struct *ki_queue;
 #endif
 
+static int pwrkey_status = -1;
+
 enum {
 	DEBOUNCE_UNSTABLE     = BIT(0),	/* Got irq, while debouncing */
 	DEBOUNCE_PRESSED      = BIT(1),
@@ -195,9 +197,9 @@ void keypad_reprort_keycode(struct gpio_key_state *ks)
 			!(ds->info->flags & GPIOEDF_ACTIVE_HIGH);
 		if (ds->info->flags & GPIOEDF_PRINT_KEYS)
 			pr_info("keypad_reprort_keycode: key %d-%d, %d "
-				"(%d) changed to %d\n",
+				"(%d) changed to %d, pwrkey_status:%d\n",
 				ds->info->type, key_entry->code, keymap_index,
-				key_entry->gpio, pressed);
+				key_entry->gpio, pressed, pwrkey_status);
 
 #ifdef CONFIG_OPTICALJOYSTICK_CRUCIAL
 		if (ds->info->info.oj_btn && key_entry->code == BTN_MOUSE) {
@@ -208,8 +210,21 @@ void keypad_reprort_keycode(struct gpio_key_state *ks)
 				key_entry->gpio, pressed);
 		} else
 #endif
+
+		if ((key_entry->code == KEY_POWER) && (pwrkey_status == 0) && (pressed == 0))
+			pressed = 1;
+
 		input_event(ds->input_devs->dev[key_entry->dev],
 				ds->info->type, key_entry->code, pressed);
+
+		if (key_entry->code == KEY_POWER) {
+			if (pressed)
+				pwrkey_status = 1;
+			else
+				pwrkey_status = 0;
+		}
+
+		wake_unlock(&ds->wake_lock);
 }
 
 #ifdef CONFIG_ARCH_MSM8X60
@@ -258,6 +273,7 @@ static irqreturn_t gpio_event_input_irq_handler(int irq, void *dev_id)
 		}
 		spin_unlock_irqrestore(&ds->irq_lock, irqflags);
 	} else {
+			wake_lock(&ds->wake_lock);
 #ifdef CONFIG_ARCH_MSM8X60
 			queue_work(ki_queue, &ks->work);
 #else

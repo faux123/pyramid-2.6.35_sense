@@ -985,7 +985,7 @@ int q6asm_run_nowait(struct audio_client *ac, uint32_t flags,
 		return -EINVAL;
 	}
 	pr_debug("session[%d]", ac->session);
-	q6asm_add_hdr(ac, &run.hdr, sizeof(run), TRUE);
+	q6asm_add_hdr_async(ac, &run.hdr, sizeof(run), TRUE);
 
 	run.hdr.opcode = ASM_SESSION_CMD_RUN;
 	run.flags    = flags;
@@ -2061,7 +2061,7 @@ int q6asm_cmd(struct audio_client *ac, int cmd)
 			for (cnt = 0; cnt < ac->port[IN].max_buf_cnt;
 								cnt++) {
 				if (ac->port[IN].buf[cnt].used == IN) {
-					pr_aud_err("Write Buf[%d] not returned\n",
+					pr_aud_info("Write Buf[%d] not returned\n",
 									cnt);
 				}
 			}
@@ -2069,7 +2069,7 @@ int q6asm_cmd(struct audio_client *ac, int cmd)
 		if (ac->port[OUT].buf) {
 			for (cnt = 0; cnt < ac->port[OUT].max_buf_cnt; cnt++) {
 				if (ac->port[OUT].buf[cnt].used == (OUT ^ 1)) {
-					pr_aud_err("Read Buf[%d] not returned\n",
+					pr_aud_info("Read Buf[%d] not returned\n",
 									cnt);
 				}
 			}
@@ -2089,7 +2089,7 @@ int q6asm_cmd_nowait(struct audio_client *ac, int cmd)
 		pr_aud_err("%s:APR handle NULL\n", __func__);
 		return -EINVAL;
 	}
-	q6asm_add_hdr(ac, &hdr, sizeof(hdr), TRUE);
+	q6asm_add_hdr_async(ac, &hdr, sizeof(hdr), TRUE);
 	switch (cmd) {
 	case CMD_PAUSE:
 		pr_debug("%s:CMD_PAUSE\n", __func__);

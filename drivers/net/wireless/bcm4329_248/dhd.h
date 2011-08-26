@@ -434,6 +434,9 @@ extern void dhd_sendup_event(dhd_pub_t *dhdp, wl_event_msg_t *event, void *data)
 extern int dhd_bus_devreset(dhd_pub_t *dhdp, uint8 flag);
 extern uint dhd_bus_status(dhd_pub_t *dhdp);
 extern int  dhd_bus_start(dhd_pub_t *dhdp);
+//HTC_CSP_START
+extern void dhd_info_send_hang_message(dhd_pub_t *dhdp);
+//HTC_CSP_END
 
 extern void print_buf(void *pbuf, int len, int bytes_per_line);
 

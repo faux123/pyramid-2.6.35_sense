@@ -53,6 +53,9 @@
 /* Flags to control command packet settings */
 #define KGSL_CMD_FLAGS_PMODE			0x00000001
 #define KGSL_CMD_FLAGS_NO_TS_CMP		0x00000002
+#define KGSL_CMD_FLAGS_CONTEXT_CHANGE		0x00000008
+
+#define KGSL_CMD_CTXT_IDENTIFIER		0xDEADDEAD
 
 struct kgsl_mem_entry;
 

@@ -49,6 +49,7 @@ config ARCH_MSM8X60
 	select MSM_GPIOMUX
 	select MSM_BUS_SCALING
 	select MSM_SECURE_IO
+	select MSM_SCHED_FAST_CPU_ONLINE
 
 config ARCH_MSM8X60_LTE
 	bool "MSM8X60_LTE"
@@ -707,12 +708,12 @@ config MSM_STACKED_MEMORY
 	  shared memory interface.  When not present regular RAM is used.
 
 config PHYS_OFFSET
-	hex
-	default "0x00200000" if !MSM_STACKED_MEMORY
-	default "0x00000000" if ARCH_QSD8X50 && MSM_SOC_REV_A
-	default "0x20000000" if ARCH_QSD8X50
-	default "0x40400000" if ARCH_MSM8X60
-	default "0x10000000"
+	hex "Kernel physical start address"
+	default 0x00200000 if !MSM_STACKED_MEMORY
+	default 0x00000000 if ARCH_QSD8X50 && MSM_SOC_REV_A
+	default 0x20000000 if ARCH_QSD8X50
+	default 0x40400000 if ARCH_MSM8X60
+	default 0x10000000
 
 config KERNEL_PMEM_EBI_REGION
 	bool "Enable in-kernel PMEM region for EBI"
@@ -1913,3 +1914,11 @@ config RADIO_FEEDBACK8660
 	bool
 	depends on ARCH_MSM8X60
 	default y
+
+config MSM_SCHED_FAST_CPU_ONLINE
+	bool "Fast scheduler update for CPU online"
+	depends on ARCH_MSM8X60
+	default n
+	help
+	  Bypass scheduler domain reconstruction when onlining the second
+	  CPU on 8X60 to speed up operation.

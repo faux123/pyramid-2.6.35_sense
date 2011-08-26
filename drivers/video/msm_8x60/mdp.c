@@ -82,6 +82,7 @@ MDP_BLOCK_TYPE mdp_debug[MDP_MAX_BLOCK];
 atomic_t mdp_block_power_cnt[MDP_MAX_BLOCK];
 
 spinlock_t mdp_spin_lock;
+spinlock_t mdp_done_lock;
 struct workqueue_struct *mdp_dma_wq;	/*mdp dma wq */
 struct workqueue_struct *mdp_vsync_wq;	/*mdp vsync wq */
 
@@ -127,6 +128,9 @@ struct timeval mdp_ppp_timeval;
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static struct early_suspend early_suspend;
+#ifdef CONFIG_HTC_ONMODE_CHARGING
+static struct early_suspend onchg_suspend;
+#endif
 #endif
 
 #ifndef CONFIG_MSM_MDP22
@@ -787,6 +791,7 @@ static void mdp_drv_init(void)
 
 	/* initialize spin lock and workqueue */
 	spin_lock_init(&mdp_spin_lock);
+	spin_lock_init(&mdp_done_lock);
 	mdp_dma_wq = create_singlethread_workqueue("mdp_dma_wq");
 	mdp_vsync_wq = create_singlethread_workqueue("mdp_vsync_wq");
 	mdp_pipe_ctrl_wq = create_singlethread_workqueue("mdp_pipe_ctrl_wq");
@@ -1501,6 +1506,11 @@ static int mdp_register_driver(void)
 	early_suspend.level = EARLY_SUSPEND_LEVEL_DISABLE_FB - 1;
 	early_suspend.suspend = mdp_early_suspend;
 	register_early_suspend(&early_suspend);
+#ifdef CONFIG_HTC_ONMODE_CHARGING
+	onchg_suspend.level = EARLY_SUSPEND_LEVEL_DISABLE_FB - 1;
+	onchg_suspend.suspend = mdp_early_suspend;
+	register_onchg_suspend(&onchg_suspend);
+#endif
 #endif
 
 	return platform_driver_register(&mdp_driver);

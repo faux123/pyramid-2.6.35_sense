@@ -42,7 +42,6 @@
 #include <mach/msm_hsusb.h>
 #include <mach/htc_battery_common.h>
 #include <linux/device.h>
-#include <linux/usb/composite.h>
 #include <mach/msm_hsusb_hw.h>
 #include <mach/clk.h>
 #include <linux/uaccess.h>
@@ -1135,19 +1134,43 @@ static void handle_endpoint(struct usb_info *ui, unsigned bit)
 	spin_unlock_irqrestore(&ui->lock, flags);
 }
 
+#define FLUSH_WAIT_US	5
+#define FLUSH_TIMEOUT	(2 * (USEC_PER_SEC / FLUSH_WAIT_US))
 static void flush_endpoint_hw(struct usb_info *ui, unsigned bits)
 {
+	uint32_t unflushed = 0;
+	uint32_t stat = 0;
+	int cnt = 0;
+
 	/* flush endpoint, canceling transactions
 	** - this can take a "large amount of time" (per databook)
 	** - the flush can fail in some cases, thus we check STAT
 	**   and repeat if we're still operating
 	**   (does the fact that this doesn't use the tripwire matter?!)
 	*/
-	do {
+	while (cnt < FLUSH_TIMEOUT) {
 		writel(bits, USB_ENDPTFLUSH);
-		while (readl(USB_ENDPTFLUSH) & bits)
-			udelay(100);
-	} while (readl(USB_ENDPTSTAT) & bits);
+		while (((unflushed = readl(USB_ENDPTFLUSH)) & bits) &&
+		       cnt < FLUSH_TIMEOUT) {
+			cnt++;
+			udelay(FLUSH_WAIT_US);
+		}
+
+		stat = readl(USB_ENDPTSTAT);
+		if (cnt >= FLUSH_TIMEOUT)
+			goto err;
+		if (!(stat & bits))
+			goto done;
+		cnt++;
+		udelay(FLUSH_WAIT_US);
+	}
+
+err:
+	USB_WARNING("%s: Could not complete flush! NOT GOOD! "
+		   "stat: %x unflushed: %x bits: %x\n", __func__,
+		   stat, unflushed, bits);
+done:
+	return;
 }
 
 static void flush_endpoint_sw(struct msm_endpoint *ept)
@@ -1203,7 +1226,6 @@ static irqreturn_t usb_interrupt(int irq, void *data)
 	struct usb_info *ui = data;
 	unsigned n;
 	unsigned long flags;
-	struct usb_composite_dev *cdev = get_gadget_data(&ui->gadget);
 
 	n = readl(USB_USBSTS);
 	writel(n, USB_USBSTS);
@@ -1266,9 +1288,8 @@ static irqreturn_t usb_interrupt(int irq, void *data)
 			 * XXX:  so deconfigure on reset for the time being
 			 */
 			if (ui->driver) {
-				cdev->mute_switch = 1;
 				USB_INFO("usb: notify offline\n");
-				ui->driver->disconnect(&ui->gadget);
+				ui->driver->mute_disconnect(&ui->gadget);
 			}
 			/* cancel pending ep0 transactions */
 			flush_endpoint(&ui->ep0out);
@@ -1622,7 +1643,6 @@ static void usb_prepare(struct usb_info *ui)
 static void usb_reset(struct usb_info *ui)
 {
 	struct msm_otg *otg = to_msm_otg(ui->xceiv);
-	struct usb_composite_dev *cdev = get_gadget_data(&ui->gadget);
 
 	USB_INFO("reset controller\n");
 
@@ -1650,9 +1670,8 @@ static void usb_reset(struct usb_info *ui)
 	configure_endpoints(ui);
 
 	if (ui->driver) {
-		cdev->mute_switch = 1;
 		USB_INFO("usb: notify offline\n");
-		ui->driver->disconnect(&ui->gadget);
+		ui->driver->mute_disconnect(&ui->gadget);
 	}
 
 	/* cancel pending ep0 transactions */

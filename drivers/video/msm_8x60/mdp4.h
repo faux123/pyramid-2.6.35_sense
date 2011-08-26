@@ -39,6 +39,7 @@ extern boolean mdp_is_hist_start;
 extern boolean mdp_is_in_isr;
 extern uint32 mdp_intr_mask;
 extern spinlock_t mdp_spin_lock;
+extern spinlock_t mdp_done_lock;
 extern struct mdp4_statistic mdp4_stat;
 extern uint32 mdp4_extn_disp;
 

@@ -59,6 +59,14 @@
 #define MSM_HDMI_SAMPLE_RATE_MAX		7
 #define MSM_HDMI_SAMPLE_RATE_FORCE_32BIT	0x7FFFFFFF
 
+
+#define HDMI_STATE_INIT				0
+#define HDMI_STATE_EDID_READ			1
+#define HDMI_STATE_HDCP_FAIL_PLUG		2
+#define HDMI_STATE_HDCP_FAIL_CNT		4
+#define HDMI_STATE_HDCP_SUCCESS			8
+
+
 struct workqueue_struct *hdmi_work_queue;
 
 struct hdmi_msm_state_type {
@@ -68,6 +76,7 @@ struct hdmi_msm_state_type {
 	boolean pm_suspended;
 #endif
 	int hpd_stable;
+	int hdmi_state;
 	boolean hpd_prev_state;
 	boolean hpd_cable_chg_detected;
 	struct work_struct hpd_state_work, hpd_read_work;
@@ -97,7 +106,7 @@ struct hdmi_msm_state_type {
 //                         External routine declaration
 // -----------------------------------------------------------------------------
 extern void update_mhl_status(bool isMHL);
-
+extern bool  g_bEnterEarlySuspend;
 
 // -----------------------------------------------------------------------------
 //                          Global variable declaration
@@ -113,6 +122,7 @@ static void hdcp_deauthenticate(void);
 static int full_auth_proc_done;
 static int hpd_event_occured_while_authenticating ;
 static DEFINE_MUTEX(hdcp_auth_state_mutex);
+
 
 
 /* static to keep track of turn on */
@@ -341,7 +351,7 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 		hdmi_msm_state->hpd_cable_chg_detected = FALSE;
 		mutex_unlock(&hdmi_msm_state_mutex);
 		if (hpd_state) {
-			if( hdmi_msm_read_edid() ){
+			if( hdmi_msm_read_edid() && !g_bEnterEarlySuspend){
 				DEV_WARN("EDID read fail! Simulate once cable out to recover...\n");
 				update_mhl_status(false);
 				return;
@@ -369,6 +379,7 @@ static void hdmi_msm_hpd_state_work(struct work_struct *work)
 			}
 		} else {
 			DEV_INFO("HDMI HPD: sense DISCONNECTED: send OFFLINE\n");
+			hdmi_msm_state->hdmi_state = HDMI_STATE_INIT;
 			kobject_uevent(external_common_state->uevent_kobj,
 				KOBJ_OFFLINE);
 #ifdef CONFIG_HTC_HEADSET_MGR
@@ -603,6 +614,14 @@ static irqreturn_t hdmi_msm_isr(int irq, void *dev_id)
 			& ~((1 << 6) | (1 << 4)));
 		DEV_INFO("HDCP: AUTH_FAIL_INT received, LINK0_STATUS=0x%08x\n",
 			HDMI_INP_ND(0x011C));
+		if (hdmi_msm_state->hdmi_state == HDMI_STATE_EDID_READ && !g_bEnterEarlySuspend) {
+			hdmi_msm_state->hdmi_state = HDMI_STATE_HDCP_FAIL_PLUG;
+			DEV_WARN("HDCP fail on plug! Simulate once cable out to recover...\n");
+			update_mhl_status(false);
+			return IRQ_HANDLED;
+		} else {
+			hdmi_msm_state->hdmi_state = HDMI_STATE_HDCP_FAIL_CNT;
+		}
 		if(full_auth_proc_done)
 		{
 			envp [0] = "HDCP_STATE=FAIL";
@@ -1552,8 +1571,10 @@ static int hdmi_msm_read_edid(void)
 
 	external_common_state->read_edid_block = hdmi_msm_read_edid_block;
 	status = hdmi_common_read_edid();
-	if (!status)
+	if (!status) {
 		DEV_DBG("EDID: successfully read\n");
+		hdmi_msm_state->hdmi_state = HDMI_STATE_EDID_READ;
+	}
 
 error:
 	return status;
@@ -2345,6 +2366,7 @@ static void hdmi_msm_hdcp_enable(void)
 		DEV_INFO("HDMI HPD: sense : send HDCP_PASS \n");
 		envp[0] = "HDCP_STATE=PASS";
 		envp[1] = NULL;
+		hdmi_msm_state->hdmi_state = HDMI_STATE_HDCP_SUCCESS;
 		kobject_uevent_env(external_common_state->uevent_kobj,
 			KOBJ_CHANGE, envp);
 	}
@@ -3665,6 +3687,7 @@ static int __devinit hdmi_msm_probe(struct platform_device *pdev)
 	if (rc)
 		goto error;
 
+	hdmi_msm_state->hdmi_state = HDMI_STATE_INIT;
 	queue_work(hdmi_work_queue, &hdmi_msm_state->hpd_read_work);
 	return 0;
 

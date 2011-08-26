@@ -374,7 +374,7 @@ static int mipi_dsi_off(struct platform_device *pdev)
 
 	if (atomic_read(&dsi_unset_cnt)) {
 		INIT_COMPLETION(dsi_unset_comp);
-		wait_time = wait_for_completion_timeout(&dsi_unset_comp, HZ);
+		wait_time = wait_for_completion_timeout(&dsi_unset_comp, HZ * 1.5);
 		if (!wait_time) {
 			pr_warn("%s: time out while waiting dsi_unset_comp\n",
 				__func__);

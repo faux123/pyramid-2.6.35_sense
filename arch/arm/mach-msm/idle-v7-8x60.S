@@ -28,7 +28,9 @@
 #endif
 
 #define POWER_COLLAPSE_STATUS_MAGIC	0xACBDFE00
-#define MSM_POWER_COLLAPSE_STATUS_BASE	(0xFA822000 - 0x8)
+
+/* Refer to msm_iomap-8x60.h, if this address need to change */
+#define MSM_POWER_COLLAPSE_STATUS_BASE	(0xFE822000 - 0x8)
 
 #define MSM_POWER_COLLAPSE_STATUS_BASE_PHYS	(0x40400000 - 0x8)
 /* r0 already has the cpu number */

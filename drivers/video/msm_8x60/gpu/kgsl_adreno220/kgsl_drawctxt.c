@@ -1139,7 +1139,7 @@ static void build_regrestore_cmds(struct kgsl_device *device,
 	if (device->chip_id != KGSL_CHIPID_LEIA_REV470)
 		*cmd++ = 0x00000000;
 	else
-		*cmd++ = 0x000001F4;
+		*cmd++ = 0x80;
 
 	if (device->chip_id == KGSL_CHIPID_LEIA_REV470) {
 		unsigned int i;
@@ -1855,7 +1855,7 @@ kgsl_drawctxt_switch(struct kgsl_yamato_device *yamato_device,
 
 		/* restore registers and constants. */
 		KGSL_CTXT_DBG("restore regs");
-		kgsl_ringbuffer_issuecmds(device, 0,
+		kgsl_ringbuffer_issuecmds(device, KGSL_CMD_FLAGS_CONTEXT_CHANGE,
 					  drawctxt->reg_restore, 3);
 
 		/* restore shader instructions & partitioning. */

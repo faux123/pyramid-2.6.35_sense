@@ -2290,7 +2290,7 @@ dhd_bus_start(dhd_pub_t *dhdp)
 	setbit(dhdp->eventmask, WLC_E_NDIS_LINK);
 	setbit(dhdp->eventmask, WLC_E_MIC_ERROR);
 	setbit(dhdp->eventmask, WLC_E_PMKID_CACHE);
-	setbit(dhdp->eventmask, WLC_E_TXFAIL);
+	//setbit(dhdp->eventmask, WLC_E_TXFAIL);
 	setbit(dhdp->eventmask, WLC_E_JOIN_START);
 	setbit(dhdp->eventmask, WLC_E_SCAN_COMPLETE);
 	setbit(dhdp->eventmask, WLC_E_RELOAD);
@@ -2307,7 +2307,7 @@ dhd_bus_start(dhd_pub_t *dhdp)
 #endif /* WLC_E_DEAUTH */
 #endif
 /* enable dongle roaming event */
-	setbit(dhdp->eventmask, WLC_E_ROAM);
+	//setbit(dhdp->eventmask, WLC_E_ROAM);
 #endif /* EMBEDDED_PLATFORM */
 
 	/* Bus is ready, do any protocol initialization */
@@ -3179,6 +3179,22 @@ int net_os_send_hang_message(struct net_device *dev)
 	}
 	return ret;
 }
+
+//HTC_CSP_START
+void dhd_info_send_hang_message(dhd_pub_t *dhdp)
+{
+	dhd_info_t *dhd = (dhd_info_t *)dhdp->info;
+	struct net_device *dev = NULL;
+	if ((dhd == NULL) || dhd->iflist[0]->net == NULL) {
+		return;
+	}
+
+	dev = dhd->iflist[0]->net;
+	net_os_send_hang_message(dev);
+
+	return;
+}
+//HTC_CSP_END
 
 void dhd_bus_country_set(struct net_device *dev, char *country_code)
 {

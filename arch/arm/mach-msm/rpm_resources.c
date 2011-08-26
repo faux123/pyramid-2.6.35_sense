@@ -24,6 +24,7 @@
 #include <linux/mutex.h>
 #include <linux/proc_fs.h>
 #include <linux/spinlock.h>
+#include <asm/div64.h>
 
 #include "mpm.h"
 #include "rpm.h"
@@ -842,6 +843,7 @@ void msm_rpmrs_show_resources(void)
 	spin_unlock_irqrestore(&msm_rpmrs_lock, flags);
 }
 
+
 struct msm_rpmrs_limits *msm_rpmrs_lowest_limits(
 	enum msm_pm_sleep_mode sleep_mode, uint32_t latency_us,
 	uint32_t sleep_us, int from_idle)
@@ -856,7 +858,7 @@ struct msm_rpmrs_limits *msm_rpmrs_lowest_limits(
 
 	for (i = 0; i < ARRAY_SIZE(msm_rpmrs_levels); i++) {
 		struct msm_rpmrs_level *level = &msm_rpmrs_levels[i];
-		uint32_t power;
+		uint64_t power;
 
 		if (!level->available)
 			continue;
@@ -876,7 +878,7 @@ struct msm_rpmrs_limits *msm_rpmrs_lowest_limits(
 		} else {
 			power = (sleep_us - level->time_overhead_us);
 			power *= level->steady_state_power;
-			power /= sleep_us;
+			do_div(power, sleep_us);
 			power += level->energy_overhead / sleep_us;
 		}
 

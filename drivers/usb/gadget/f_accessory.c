@@ -323,7 +323,8 @@ static int __init create_bulk_endpoints(struct acc_dev *dev,
 	DBG(cdev, "usb_ep_autoconfig for ep_out got %s\n", ep->name);
 	ep->driver_data = dev;		/* claim the endpoint */
 	dev->ep_out = ep;
-
+	/* FIXME: why we need to apply out_ep twice? */
+#if 0
 	ep = usb_ep_autoconfig(cdev->gadget, out_desc);
 	if (!ep) {
 		DBG(cdev, "usb_ep_autoconfig for ep_out failed\n");
@@ -332,6 +333,7 @@ static int __init create_bulk_endpoints(struct acc_dev *dev,
 	DBG(cdev, "usb_ep_autoconfig for ep_out got %s\n", ep->name);
 	ep->driver_data = dev;		/* claim the endpoint */
 	dev->ep_out = ep;
+#endif
 
 	/* now allocate requests for our endpoints */
 	for (i = 0; i < TX_REQ_MAX; i++) {
@@ -490,7 +492,7 @@ static long acc_ioctl(struct file *fp, unsigned code, unsigned long value)
 	char *src = NULL;
 	int ret;
 
-	if (dev->function.disabled)
+	if (dev->function.hidden)
 		return -ENODEV;
 
 	switch (code) {
@@ -615,6 +617,30 @@ acc_function_unbind(struct usb_configuration *c, struct usb_function *f)
 	_acc_dev = NULL;
 }
 
+#ifdef CONFIG_USB_GADGET_DYNAMIC_ENDPOINT
+static void
+acc_function_release(struct usb_configuration *c, struct usb_function *f)
+{
+	struct acc_dev	*dev = func_to_dev(f);
+	struct usb_request *req;
+	int i;
+
+	if (dev->ep_in)
+		dev->ep_in->driver_data = NULL;
+	if (dev->ep_out)
+		dev->ep_out->driver_data = NULL;
+
+	/* spin_lock_irq(&dev->lock); */
+	while ((req = req_get(dev, &dev->tx_idle)))
+		acc_request_free(req, dev->ep_in);
+	for (i = 0; i < RX_REQ_MAX; i++)
+		acc_request_free(dev->rx_req[i], dev->ep_out);
+	dev->online = 0;
+	/* spin_unlock_irq(&dev->lock); */
+	usb_interface_id_remove(c, 1);
+}
+#endif
+
 static void acc_work(struct work_struct *data)
 {
 	struct delayed_work *delayed = to_delayed_work(data);
@@ -642,7 +668,7 @@ static int acc_function_setup(struct usb_function *f,
 			w_value, w_index, w_length);
 */
 
-	if (dev->function.disabled) {
+	if (dev->function.hidden) {
 		if (b_requestType == (USB_DIR_OUT | USB_TYPE_VENDOR)) {
 			if (b_request == ACCESSORY_START) {
 				schedule_delayed_work(
@@ -681,8 +707,8 @@ static int acc_function_setup(struct usb_function *f,
 
 	if (value == -EOPNOTSUPP)
 		VDBG(cdev,
-			"unknown class-specific control req "
-			"%02x.%02x v%04x i%04x l%u\n",
+			"(%s) unknown class-specific control req "
+			"%02x.%02x v%04x i%04x l%u\n", f->name,
 			ctrl->bRequestType, ctrl->bRequest,
 			w_value, w_index, w_length);
 	return value;
@@ -710,7 +736,7 @@ static int acc_function_set_alt(struct usb_function *f,
 		usb_ep_disable(dev->ep_in);
 		return ret;
 	}
-	if (!dev->function.disabled)
+	if (!dev->function.hidden)
 		dev->online = 1;
 
 	/* readers may be blocked waiting for us to go online */
@@ -771,7 +797,11 @@ static int acc_bind_config(struct usb_configuration *c)
 	dev->function.setup = acc_function_setup;
 	dev->function.set_alt = acc_function_set_alt;
 	dev->function.disable = acc_function_disable;
-	dev->function.disabled = 1;
+#ifdef CONFIG_USB_GADGET_DYNAMIC_ENDPOINT
+	dev->function.release = acc_function_release;
+//	dev->function.dynamic = 1;
+#endif
+	dev->function.hidden = 1;
 
 	/* _acc_dev must be set before calling usb_gadget_register_driver */
 	_acc_dev = dev;

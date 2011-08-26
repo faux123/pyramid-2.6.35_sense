@@ -222,6 +222,8 @@ static int cable_detect_get_type(struct cable_detect_info *pInfo)
 				type = DOCK_STATE_CAR;
 			else if (adc > 370 && adc < 440)
 				type = DOCK_STATE_USB_HEADSET;
+			else if (adc > 440 && adc < 550)
+				type = DOCK_STATE_DMB;
 			else if (adc > 550 && adc < 900)
 				type = DOCK_STATE_DESK;
 			else
@@ -288,6 +290,11 @@ static void cable_detect_handler(struct work_struct *w)
 		switch_set_state(&dock_switch, DOCK_STATE_MHL);
 		pInfo->accessory_type = DOCK_STATE_MHL;
 		break;
+	case DOCK_STATE_DMB:
+		CABLE_INFO("DMB inserted\n");
+		switch_set_state(&dock_switch, DOCK_STATE_DMB);
+		pInfo->accessory_type = DOCK_STATE_DMB;
+		break;
 	case DOCK_STATE_UNDEFINED:
 	case DOCK_STATE_UNDOCKED:
 		switch (pInfo->accessory_type) {
@@ -311,6 +318,11 @@ static void cable_detect_handler(struct work_struct *w)
 		case DOCK_STATE_MHL:
 			CABLE_INFO("MHL removed\n");
 			switch_set_state(&dock_switch, DOCK_STATE_UNDOCKED);
+			break;
+		case DOCK_STATE_DMB:
+			CABLE_INFO("DMB removed\n");
+			switch_set_state(&dock_switch, DOCK_STATE_UNDOCKED);
+			pInfo->accessory_type = DOCK_STATE_UNDOCKED;
 			break;
 		}
 	default :
@@ -651,6 +663,41 @@ static ssize_t adc_status_show(struct device *dev,
 	return sprintf(buf, "%d\n", adc);
 }
 static DEVICE_ATTR(adc, S_IRUGO | S_IWUSR, adc_status_show, NULL);
+
+static ssize_t dmb_wakeup_store(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	struct cable_detect_info *pInfo = &the_cable_info;
+	uint32_t wakeup;
+
+	if (pInfo->accessory_type != DOCK_STATE_DMB) {
+		CABLE_INFO("%s: DMB not exist. Do nothing.\n", __func__);
+		return count;
+	}
+
+	sscanf(buf, "%d", &wakeup);
+	CABLE_DEBUG("%s: wakeup = %d\n", __func__, wakeup);
+	if (!!wakeup) {
+		disable_irq_nosync(pInfo->idpin_irq);
+
+		gpio_direction_output(pInfo->usb_id_pin_gpio, 0);
+		msleep(1);
+		gpio_direction_output(pInfo->usb_id_pin_gpio, 1);
+		msleep(10);
+		gpio_direction_output(pInfo->usb_id_pin_gpio, 0);
+		msleep(1);
+
+		gpio_direction_input(pInfo->usb_id_pin_gpio);
+		enable_irq(pInfo->idpin_irq);
+	}
+	CABLE_INFO("%s(parent:%s): request DMB wakeup done.\n",
+			current->comm, current->parent->comm);
+
+	return count;
+}
+
+static DEVICE_ATTR(dmb_wakeup, S_IRUGO | S_IWUSR, NULL, dmb_wakeup_store);
 #endif
 
 static int cable_detect_probe(struct platform_device *pdev)
@@ -730,6 +777,12 @@ static int cable_detect_probe(struct platform_device *pdev)
 	ret = device_create_file(dock_switch.dev, &dev_attr_adc);
 	if (ret != 0)
 		CABLE_ERR("dev_attr_adc failed\n");
+
+	ret = device_create_file(dock_switch.dev, &dev_attr_dmb_wakeup);
+	if (ret != 0)
+		CABLE_ERR("dev_attr_dmb_wakeup failed\n");
+
+	CABLE_INFO("USB_ID ADC = %d\n", cable_detect_get_adc());
 #endif
 
 #ifdef CONFIG_CABLE_DETECT_GPIO_DOCK

@@ -120,6 +120,30 @@ static struct power_supply htc_power_supplies[] = {
 	},
 };
 
+/*
+ *  For Off-mode charging animation,
+ *  add a function for display driver to inform the charging animation mode.
+ */
+static int zcharge_enabled;
+int htc_battery_get_zcharge_mode(void)
+{
+	return zcharge_enabled;
+}
+static int __init enable_zcharge_setup(char *str)
+{
+	int rc;
+	unsigned long cal;
+
+	rc = strict_strtoul(str, 10, &cal);
+
+	if (rc)
+		return rc;
+
+	zcharge_enabled = cal;
+	return 1;
+}
+__setup("enable_zcharge=", enable_zcharge_setup);
+
 static int htc_battery_get_charging_status(void)
 {
 	u32 level;

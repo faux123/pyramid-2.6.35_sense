@@ -1061,8 +1061,8 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 							      trip_type);
 				if (!ret) {
 					printk(KERN_EMERG
-					       "Critical temperature reached (%ld C), shutting down.\n",
-					       temp/1000);
+					       "Critical temperature reached %ld C (>= %ld C), shutting down.\n",
+					       temp, trip_temp);
 					orderly_poweroff(true);
 				}
 			}
@@ -1089,8 +1089,8 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 								trip_type);
 			if (!ret) {
 				printk(KERN_EMERG
-				"Critical temperature reached (%ld C), \
-					shutting down.\n", temp/1000);
+				"Critical temperature reached %ld C (<= %ld C), "
+					"shutting down.\n", temp, trip_temp);
 				orderly_poweroff(true);
 				}
 			}

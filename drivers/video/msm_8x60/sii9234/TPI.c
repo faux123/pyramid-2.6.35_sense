@@ -661,6 +661,10 @@ static	void	Int4Isr( void )
 
 		ForceUsbIdSwitchOpen();
 		ReleaseUsbIdSwitchOpen();
+#ifdef CONFIG_CABLE_DETECT_ACCESSORY
+		update_mhl_status(false);
+#endif
+
 	}
 	I2C_WriteByte(TPI_SLAVE_ADDR, (0x74), reg74);
 

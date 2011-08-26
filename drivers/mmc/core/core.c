@@ -1316,8 +1316,6 @@ out:
 
 void mmc_start_host(struct mmc_host *host)
 {
-	mmc_power_up(host);
-	mdelay(10);
 	mmc_power_off(host);
 	mmc_detect_change(host, 0);
 }

@@ -599,6 +599,8 @@ static int msm_fb_detect_panel(const char *name)
 static struct msm_fb_platform_data msm_fb_pdata = {
 	.detect_client = msm_fb_detect_panel,
 	.blt_mode = 1,
+	.width = 53,
+	.height = 95,
 };
 
 static struct platform_device msm_fb_device = {

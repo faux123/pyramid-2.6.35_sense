@@ -492,8 +492,8 @@ static int do_task_stat(struct seq_file *m, struct pid_namespace *ns,
 		vsize,
 		mm ? get_mm_rss(mm) : 0,
 		rsslim,
-		mm ? mm->start_code : 0,
-		mm ? mm->end_code : 0,
+		mm ? (permitted ? mm->start_code : 1) : 0,
+		mm ? (permitted ? mm->end_code : 1) : 0,
 		(permitted && mm) ? mm->start_stack : 0,
 		esp,
 		eip,
@@ -518,7 +518,7 @@ static int do_task_stat(struct seq_file *m, struct pid_namespace *ns,
 #ifdef CONFIG_SCHEDSTATS
 		nsec_to_clock_t(task->se.statistics.iowait_sum)
 #else
-		(unsigned long long)0UL
+		cputime64_to_clock_t(task->iowait)
 #endif
 	);
 

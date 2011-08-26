@@ -304,7 +304,9 @@ static void mdp4_overlay_dtv_wait4vsync(struct msm_fb_data_type *mfd)
 	outp32(MDP_INTR_ENABLE, mdp_intr_mask);
 	spin_unlock_irqrestore(&mdp_spin_lock, flag);
 	wait_for_completion_killable(&dtv_pipe->comp);
+	spin_lock_irqsave(&mdp_done_lock, flag);
 	mdp_disable_irq(MDP_OVERLAY1_TERM);
+	spin_unlock_irqrestore(&mdp_done_lock, flag);
 }
 
 void mdp4_overlay_dtv_vsync_push(struct msm_fb_data_type *mfd,
@@ -332,7 +334,9 @@ static void mdp4_overlay_dtv_wait4_ov_done(struct msm_fb_data_type *mfd)
 	outp32(MDP_INTR_ENABLE, mdp_intr_mask);
 	spin_unlock_irqrestore(&mdp_spin_lock, flag);
 	wait_for_completion_killable(&dtv_pipe->comp);
+	spin_lock_irqsave(&mdp_done_lock, flag);
 	mdp_disable_irq(MDP_OVERLAY1_TERM);
+	spin_unlock_irqrestore(&mdp_done_lock, flag);
 }
 
 void mdp4_overlay_dtv_ov_done_push(struct msm_fb_data_type *mfd,

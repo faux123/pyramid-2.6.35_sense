@@ -492,6 +492,7 @@ struct rq {
 	struct mm_struct *prev_mm;
 
 	u64 clock;
+	u64 clock_task;
 
 	atomic_t nr_iowait;
 
@@ -517,6 +518,10 @@ struct rq {
 	u64 age_stamp;
 	u64 idle_stamp;
 	u64 avg_idle;
+#endif
+
+#ifdef CONFIG_IRQ_TIME_ACCOUNTING
+	u64 prev_irq_time;
 #endif
 
 	/* calc_load related fields */
@@ -632,10 +637,21 @@ static inline struct task_group *task_group(struct task_struct *p)
 
 #endif /* CONFIG_CGROUP_SCHED */
 
+static u64 irq_time_cpu(int cpu);
+static void sched_irq_time_avg_update(struct rq *rq, u64 irq_time);
+
 inline void update_rq_clock(struct rq *rq)
 {
+	int cpu = cpu_of(rq);
+	u64 irq_time;
+
 	if (!rq->skip_clock_update)
 		rq->clock = sched_clock_cpu(cpu_of(rq));
+	irq_time = irq_time_cpu(cpu);
+	if (rq->clock - irq_time > rq->clock_task)
+		rq->clock_task = rq->clock - irq_time;
+
+	sched_irq_time_avg_update(rq, irq_time);
 }
 
 /*
@@ -1261,6 +1277,10 @@ static void resched_task(struct task_struct *p)
 static void sched_rt_avg_update(struct rq *rq, u64 rt_delta)
 {
 }
+
+static void sched_avg_update(struct rq *rq)
+{
+}
 #endif /* CONFIG_SMP */
 
 #if BITS_PER_LONG == 32
@@ -1806,6 +1826,94 @@ static const struct sched_class rt_sched_class;
 #define for_each_class(class) \
    for (class = sched_class_highest; class; class = class->next)
 
+#ifdef CONFIG_IRQ_TIME_ACCOUNTING
+
+/*
+ * There are no locks covering percpu hardirq/softirq time.
+ * They are only modified in account_system_vtime, on corresponding CPU
+ * with interrupts disabled. So, writes are safe.
+ * They are read and saved off onto struct rq in update_rq_clock().
+ * This may result in other CPU reading this CPU's irq time and can
+ * race with irq/account_system_vtime on this CPU. We would either get old
+ * or new value (or semi updated value on 32 bit) with a side effect of
+ * accounting a slice of irq time to wrong task when irq is in progress
+ * while we read rq->clock. That is a worthy compromise in place of having
+ * locks on each irq in account_system_time.
+ */
+static DEFINE_PER_CPU(u64, cpu_hardirq_time);
+static DEFINE_PER_CPU(u64, cpu_softirq_time);
+
+static DEFINE_PER_CPU(u64, irq_start_time);
+static int sched_clock_irqtime;
+
+void enable_sched_clock_irqtime(void)
+{
+	sched_clock_irqtime = 1;
+}
+
+void disable_sched_clock_irqtime(void)
+{
+	sched_clock_irqtime = 0;
+}
+
+static u64 irq_time_cpu(int cpu)
+{
+	if (!sched_clock_irqtime)
+		return 0;
+
+	return per_cpu(cpu_softirq_time, cpu) + per_cpu(cpu_hardirq_time, cpu);
+}
+
+void account_system_vtime(struct task_struct *curr)
+{
+	unsigned long flags;
+	int cpu;
+	u64 now, delta;
+
+	if (!sched_clock_irqtime)
+		return;
+
+	local_irq_save(flags);
+
+	cpu = smp_processor_id();
+	now = sched_clock_cpu(cpu);
+	delta = now - per_cpu(irq_start_time, cpu);
+	per_cpu(irq_start_time, cpu) = now;
+	/*
+	 * We do not account for softirq time from ksoftirqd here.
+	 * We want to continue accounting softirq time to ksoftirqd thread
+	 * in that case, so as not to confuse scheduler with a special task
+	 * that do not consume any time, but still wants to run.
+	 */
+	if (hardirq_count())
+		per_cpu(cpu_hardirq_time, cpu) += delta;
+	else if (in_serving_softirq() && !(curr->flags & PF_KSOFTIRQD))
+		per_cpu(cpu_softirq_time, cpu) += delta;
+
+	local_irq_restore(flags);
+}
+EXPORT_SYMBOL_GPL(account_system_vtime);
+
+static void sched_irq_time_avg_update(struct rq *rq, u64 curr_irq_time)
+{
+	if (sched_clock_irqtime && sched_feat(NONIRQ_POWER)) {
+		u64 delta_irq = curr_irq_time - rq->prev_irq_time;
+		rq->prev_irq_time = curr_irq_time;
+		sched_rt_avg_update(rq, delta_irq);
+	}
+}
+
+#else
+
+static u64 irq_time_cpu(int cpu)
+{
+	return 0;
+}
+
+static void sched_irq_time_avg_update(struct rq *rq, u64 curr_irq_time) { }
+
+#endif
+
 #include "sched_stats.h"
 
 static void inc_nr_running(struct rq *rq)
@@ -1999,7 +2107,7 @@ static void check_preempt_curr(struct rq *rq, struct task_struct *p, int flags)
 	 * A queue event has occurred, and we're going to schedule.  In
 	 * this case, we can save a useless back to back clock update.
 	 */
-	if (test_tsk_need_resched(rq->curr))
+	if (rq->curr->se.on_rq && test_tsk_need_resched(rq->curr))
 		rq->skip_clock_update = 1;
 }
 
@@ -2013,6 +2121,9 @@ task_hot(struct task_struct *p, u64 now, struct sched_domain *sd)
 	s64 delta;
 
 	if (p->sched_class != &fair_sched_class)
+		return 0;
+
+	if (unlikely(p->policy == SCHED_IDLE))
 		return 0;
 
 	/*
@@ -2937,6 +3048,15 @@ static long calc_load_fold_active(struct rq *this_rq)
 	return delta;
 }
 
+static unsigned long
+calc_load(unsigned long load, unsigned long exp, unsigned long active)
+{
+	load *= exp;
+	load += active * (FIXED_1 - exp);
+	load += 1UL << (FSHIFT - 1);
+	return load >> FSHIFT;
+}
+
 #ifdef CONFIG_NO_HZ
 /*
  * For NO_HZ we delay the active fold to the next LOAD_FREQ update.
@@ -2966,6 +3086,128 @@ static long calc_load_fold_idle(void)
 
 	return delta;
 }
+
+/**
+ * fixed_power_int - compute: x^n, in O(log n) time
+ *
+ * @x:         base of the power
+ * @frac_bits: fractional bits of @x
+ * @n:         power to raise @x to.
+ *
+ * By exploiting the relation between the definition of the natural power
+ * function: x^n := x*x*...*x (x multiplied by itself for n times), and
+ * the binary encoding of numbers used by computers: n := \Sum n_i * 2^i,
+ * (where: n_i \elem {0, 1}, the binary vector representing n),
+ * we find: x^n := x^(\Sum n_i * 2^i) := \Prod x^(n_i * 2^i), which is
+ * of course trivially computable in O(log_2 n), the length of our binary
+ * vector.
+ */
+static unsigned long
+fixed_power_int(unsigned long x, unsigned int frac_bits, unsigned int n)
+{
+	unsigned long result = 1UL << frac_bits;
+
+	if (n) for (;;) {
+		if (n & 1) {
+			result *= x;
+			result += 1UL << (frac_bits - 1);
+			result >>= frac_bits;
+		}
+		n >>= 1;
+		if (!n)
+			break;
+		x *= x;
+		x += 1UL << (frac_bits - 1);
+		x >>= frac_bits;
+	}
+
+	return result;
+}
+
+/*
+ * a1 = a0 * e + a * (1 - e)
+ *
+ * a2 = a1 * e + a * (1 - e)
+ *    = (a0 * e + a * (1 - e)) * e + a * (1 - e)
+ *    = a0 * e^2 + a * (1 - e) * (1 + e)
+ *
+ * a3 = a2 * e + a * (1 - e)
+ *    = (a0 * e^2 + a * (1 - e) * (1 + e)) * e + a * (1 - e)
+ *    = a0 * e^3 + a * (1 - e) * (1 + e + e^2)
+ *
+ *  ...
+ *
+ * an = a0 * e^n + a * (1 - e) * (1 + e + ... + e^n-1) [1]
+ *    = a0 * e^n + a * (1 - e) * (1 - e^n)/(1 - e)
+ *    = a0 * e^n + a * (1 - e^n)
+ *
+ * [1] application of the geometric series:
+ *
+ *              n         1 - x^(n+1)
+ *     S_n := \Sum x^i = -------------
+ *             i=0          1 - x
+ */
+static unsigned long
+calc_load_n(unsigned long load, unsigned long exp,
+	    unsigned long active, unsigned int n)
+{
+
+	return calc_load(load, fixed_power_int(exp, FSHIFT, n), active);
+}
+
+/*
+ * NO_HZ can leave us missing all per-cpu ticks calling
+ * calc_load_account_active(), but since an idle CPU folds its delta into
+ * calc_load_tasks_idle per calc_load_account_idle(), all we need to do is fold
+ * in the pending idle delta if our idle period crossed a load cycle boundary.
+ *
+ * Once we've updated the global active value, we need to apply the exponential
+ * weights adjusted to the number of cycles missed.
+ */
+static void calc_global_nohz(unsigned long ticks)
+{
+	long delta, active, n;
+
+	if (time_before(jiffies, calc_load_update))
+		return;
+
+	/*
+	 * If we crossed a calc_load_update boundary, make sure to fold
+	 * any pending idle changes, the respective CPUs might have
+	 * missed the tick driven calc_load_account_active() update
+	 * due to NO_HZ.
+	 */
+	delta = calc_load_fold_idle();
+	if (delta)
+		atomic_long_add(delta, &calc_load_tasks);
+
+	/*
+	 * If we were idle for multiple load cycles, apply them.
+	 */
+	if (ticks >= LOAD_FREQ) {
+		n = ticks / LOAD_FREQ;
+
+		active = atomic_long_read(&calc_load_tasks);
+		active = active > 0 ? active * FIXED_1 : 0;
+
+		avenrun[0] = calc_load_n(avenrun[0], EXP_1, active, n);
+		avenrun[1] = calc_load_n(avenrun[1], EXP_5, active, n);
+		avenrun[2] = calc_load_n(avenrun[2], EXP_15, active, n);
+
+		calc_load_update += n * LOAD_FREQ;
+	}
+
+	/*
+	 * Its possible the remainder of the above division also crosses
+	 * a LOAD_FREQ period, the regular check in calc_global_load()
+	 * which comes after this will take care of that.
+	 *
+	 * Consider us being 11 ticks before a cycle completion, and us
+	 * sleeping for 4*LOAD_FREQ + 22 ticks, then the above code will
+	 * age us 4 cycles, and the test in calc_global_load() will
+	 * pick up the final one.
+	 */
+}
 #else
 static void calc_load_account_idle(struct rq *this_rq)
 {
@@ -2974,6 +3216,10 @@ static void calc_load_account_idle(struct rq *this_rq)
 static inline long calc_load_fold_idle(void)
 {
 	return 0;
+}
+
+static void calc_global_nohz(unsigned long ticks)
+{
 }
 #endif
 
@@ -2992,24 +3238,17 @@ void get_avenrun(unsigned long *loads, unsigned long offset, int shift)
 	loads[2] = (avenrun[2] + offset) << shift;
 }
 
-static unsigned long
-calc_load(unsigned long load, unsigned long exp, unsigned long active)
-{
-	load *= exp;
-	load += active * (FIXED_1 - exp);
-	return load >> FSHIFT;
-}
-
 /*
  * calc_load - update the avenrun load estimates 10 ticks after the
  * CPUs have updated calc_load_tasks.
  */
-void calc_global_load(void)
+void calc_global_load(unsigned long ticks)
 {
-	unsigned long upd = calc_load_update + 10;
 	long active;
 
-	if (time_before(jiffies, upd))
+	calc_global_nohz(ticks);
+
+	if (time_before(jiffies, calc_load_update + 10))
 		return;
 
 	active = atomic_long_read(&calc_load_tasks);
@@ -3071,6 +3310,8 @@ static void update_cpu_load(struct rq *this_rq)
 	}
 
 	calc_load_account_active(this_rq);
+
+	sched_avg_update(this_rq);
 }
 
 #ifdef CONFIG_SMP
@@ -3124,7 +3365,7 @@ static u64 do_task_delta_exec(struct task_struct *p, struct rq *rq)
 
 	if (task_current(rq, p)) {
 		update_rq_clock(rq);
-		ns = rq->clock - p->se.exec_start;
+		ns = rq->clock_task - p->se.exec_start;
 		if ((s64)ns < 0)
 			ns = 0;
 	}
@@ -3273,7 +3514,7 @@ void account_system_time(struct task_struct *p, int hardirq_offset,
 	tmp = cputime_to_cputime64(cputime);
 	if (hardirq_count() - hardirq_offset)
 		cpustat->irq = cputime64_add(cpustat->irq, tmp);
-	else if (softirq_count())
+	else if (in_serving_softirq())
 		cpustat->softirq = cputime64_add(cpustat->softirq, tmp);
 	else
 		cpustat->system = cputime64_add(cpustat->system, tmp);
@@ -3305,9 +3546,21 @@ void account_idle_time(cputime_t cputime)
 	struct cpu_usage_stat *cpustat = &kstat_this_cpu.cpustat;
 	cputime64_t cputime64 = cputime_to_cputime64(cputime);
 	struct rq *rq = this_rq();
+#ifndef CONFIG_SCHEDSTATS
+	struct task_struct *g, *p;
+#endif
 
-	if (atomic_read(&rq->nr_iowait) > 0)
+	if (atomic_read(&rq->nr_iowait) > 0) {
+#ifndef CONFIG_SCHEDSTATS
+		read_lock(&tasklist_lock);
+		do_each_thread(g, p) {
+			if (p->in_iowait)
+				p->iowait = cputime64_add(p->iowait, cputime64);
+		} while_each_thread(g, p);
+		read_unlock(&tasklist_lock);
+#endif
 		cpustat->iowait = cputime64_add(cpustat->iowait, cputime64);
+	}
 	else
 		cpustat->idle = cputime64_add(cpustat->idle, cputime64);
 }
@@ -3576,7 +3829,6 @@ static void put_prev_task(struct rq *rq, struct task_struct *prev)
 {
 	if (prev->se.on_rq)
 		update_rq_clock(rq);
-	rq->skip_clock_update = 0;
 	prev->sched_class->put_prev_task(rq, prev);
 }
 
@@ -3635,7 +3887,6 @@ need_resched_nonpreemptible:
 		hrtick_clear(rq);
 
 	raw_spin_lock_irq(&rq->lock);
-	clear_tsk_need_resched(prev);
 
 	if (prev->state && !(preempt_count() & PREEMPT_ACTIVE)) {
 		if (unlikely(signal_pending_state(prev->state, prev)))
@@ -3652,6 +3903,8 @@ need_resched_nonpreemptible:
 
 	put_prev_task(rq, prev);
 	next = pick_next_task(rq);
+	clear_tsk_need_resched(prev);
+	rq->skip_clock_update = 0;
 
 	if (likely(prev != next)) {
 		sched_info_switch(prev, next);
@@ -5225,7 +5478,7 @@ void __cpuinit init_idle(struct task_struct *idle, int cpu)
 	idle->state = TASK_RUNNING;
 	idle->se.exec_start = sched_clock();
 
-	cpumask_copy(&idle->cpus_allowed, cpumask_of(cpu));
+	do_set_cpus_allowed(idle, cpumask_of(cpu));
 	/*
 	 * We're having a chicken and egg problem, even though we are
 	 * holding rq->lock, the cpu isn't yet set to this cpu so the
@@ -5317,6 +5570,16 @@ static inline void sched_init_granularity(void)
 }
 
 #ifdef CONFIG_SMP
+void do_set_cpus_allowed(struct task_struct *p, const struct cpumask *new_mask)
+{
+	if (p->sched_class && p->sched_class->set_cpus_allowed)
+		p->sched_class->set_cpus_allowed(p, new_mask);
+	else {
+		cpumask_copy(&p->cpus_allowed, new_mask);
+		p->rt.nr_cpus_allowed = cpumask_weight(new_mask);
+	}
+}
+
 /*
  * This is how migration works:
  *
@@ -5371,12 +5634,7 @@ again:
 		goto out;
 	}
 
-	if (p->sched_class->set_cpus_allowed)
-		p->sched_class->set_cpus_allowed(p, new_mask);
-	else {
-		cpumask_copy(&p->cpus_allowed, new_mask);
-		p->rt.nr_cpus_allowed = cpumask_weight(new_mask);
-	}
+	do_set_cpus_allowed(p, new_mask);
 
 	/* Can the task run on the task's current CPU? If so, we're done */
 	if (cpumask_test_cpu(task_cpu(p), new_mask))
@@ -6667,6 +6925,8 @@ static void init_sched_groups_power(int cpu, struct sched_domain *sd)
 	if (cpu != group_first_cpu(sd->groups))
 		return;
 
+	sd->groups->group_weight = cpumask_weight(sched_group_cpus(sd->groups));
+
 	child = sd->child;
 
 	sd->groups->cpu_power = 0;
@@ -7178,6 +7438,60 @@ static int dattrs_equal(struct sched_domain_attr *cur, int idx_cur,
 			sizeof(struct sched_domain_attr));
 }
 
+#ifdef CONFIG_MSM_SCHED_FAST_CPU_ONLINE
+void fast_sched_domains_update(int cpu)
+{
+	struct s_data d;
+	struct sched_domain *sd;
+	struct cpumask *cpu_map = doms_cur[0];
+	int i;
+
+	mutex_lock(&sched_domains_mutex);
+
+	unregister_sched_domain_sysctl();
+
+	if (!alloc_cpumask_var(&d.nodemask, GFP_KERNEL))
+		goto skip;
+	if (!alloc_cpumask_var(&d.send_covered, GFP_KERNEL)) {
+		free_cpumask_var(d.nodemask);
+		goto skip;
+	}
+	d.rd = alloc_rootdomain();
+	if (!d.rd) {
+		free_cpumask_var(d.nodemask);
+		free_cpumask_var(d.send_covered);
+		goto skip;
+	}
+
+	cpumask_andnot(cpu_map, cpu_active_mask, cpu_isolated_map);
+
+	for_each_cpu(i, cpu_map) {
+		cpumask_and(d.nodemask,
+			cpumask_of_node(cpu_to_node(i)), cpu_map);
+		sd = __build_cpu_sched_domain(&d, cpu_map, NULL, NULL, i);
+	}
+
+	build_sched_groups(&d, SD_LV_CPU, cpu_map, 0);
+	for_each_cpu(i, cpu_map) {
+		sd = &per_cpu(phys_domains, i).sd;
+		init_sched_groups_power(i, sd);
+	}
+
+	for_each_cpu(i, cpu_map) {
+		sd = &per_cpu(phys_domains, i).sd;
+		cpu_attach_domain(sd, d.rd, i);
+	}
+
+	free_cpumask_var(d.nodemask);
+	free_cpumask_var(d.send_covered);
+
+skip:
+	register_sched_domain_sysctl();
+
+	mutex_unlock(&sched_domains_mutex);
+}
+#endif
+
 /*
  * Partition sched domains as specified by the 'ndoms_new'
  * cpumasks in the array doms_new[] of cpumasks. This compares
@@ -7371,6 +7685,14 @@ static int update_sched_domains(struct notifier_block *nfb,
 	switch (action) {
 	case CPU_ONLINE:
 	case CPU_ONLINE_FROZEN:
+#ifdef CONFIG_MSM_SCHED_FAST_CPU_ONLINE
+		/* Fast scheduler domain update for MSM8X60 CPU1 */
+		if (doms_cur == &fallback_doms) {
+			/* Add CPU 1 to existing scheduler domain */
+			fast_sched_domains_update(1);
+			return NOTIFY_OK;
+		}
+#endif
 	case CPU_DOWN_PREPARE:
 	case CPU_DOWN_PREPARE_FROZEN:
 	case CPU_DOWN_FAILED:
@@ -8172,16 +8494,11 @@ void sched_move_task(struct task_struct *tsk)
 		tsk->sched_class->put_prev_task(rq, tsk);
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
-	if (tsk->sched_class->prep_move_group)
-		tsk->sched_class->prep_move_group(tsk, on_rq);
+	if (tsk->sched_class->task_move_group)
+		tsk->sched_class->task_move_group(tsk, on_rq);
+	else
 #endif
-
-	set_task_rq(tsk, task_cpu(tsk));
-
-#ifdef CONFIG_FAIR_GROUP_SCHED
-	if (tsk->sched_class->moved_group)
-		tsk->sched_class->moved_group(tsk, on_rq);
-#endif
+		set_task_rq(tsk, task_cpu(tsk));
 
 	if (unlikely(running))
 		tsk->sched_class->set_curr_task(rq);

@@ -486,7 +486,7 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 			brq.data.sg_len = i;
 		}
 #ifdef CONFIG_MMC_PERF_PROFILING
-		if (mmc_card_sd(card)) {
+		if (mmc_card_sd(card) || mmc_card_mmc(card)) {
 			start = ktime_get();
 		}
 #endif
@@ -500,6 +500,10 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 		if (mmc_card_sd(card)) {
 			diff = ktime_sub(ktime_get(), start);
 			if (ktime_to_us(diff) > 35000)
+				printk(KERN_DEBUG "%s:(%s)finish cmd(%d) time=%lld \n", __func__, current->comm, brq.cmd.opcode, ktime_to_us(diff));
+		} else if (mmc_card_mmc(card)) {
+			diff = ktime_sub(ktime_get(), start);
+			if (ktime_to_us(diff) > 250000)
 				printk(KERN_DEBUG "%s:(%s)finish cmd(%d) time=%lld \n", __func__, current->comm, brq.cmd.opcode, ktime_to_us(diff));
 		}
 #endif
@@ -610,7 +614,11 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 #ifdef CONFIG_MMC_PERF_PROFILING
 		if (mmc_card_sd(card)) {
 				diff = ktime_sub(ktime_get(), start);
-				if (ktime_to_us(diff) > 100000)
+				if (ktime_to_us(diff) > 150000)
+					printk(KERN_DEBUG "%s: ---(%s) start sector=%d, size %d, total time=%lld microseconds\n", __func__, current->comm, brq.cmd.arg, blk_rq_sectors(req) , ktime_to_us(diff));
+		} else if (mmc_card_mmc(card)) {
+				diff = ktime_sub(ktime_get(), start);
+				if (ktime_to_us(diff) > 250000)
 					printk(KERN_DEBUG "%s: ---(%s) start sector=%d, size %d, total time=%lld microseconds\n", __func__, current->comm, brq.cmd.arg, blk_rq_sectors(req) , ktime_to_us(diff));
 		}
 #endif

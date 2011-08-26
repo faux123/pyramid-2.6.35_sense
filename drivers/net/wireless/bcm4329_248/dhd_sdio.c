@@ -492,6 +492,9 @@ dhdsdio_set_siaddr_window(dhd_bus_t *bus, uint32 address)
 
 
 /* Turn backplane clock on or off */
+//HTC_CSP_START
+static int htclk_fail = 0;
+//HTC_CSP_END
 static int
 dhdsdio_htclk(dhd_bus_t *bus, bool on, bool pendok)
 {
@@ -521,7 +524,7 @@ dhdsdio_htclk(dhd_bus_t *bus, bool on, bool pendok)
 		bcmsdh_cfg_write(sdh, SDIO_FUNC_1, SBSDIO_FUNC1_CHIPCLKCSR, clkreq, &err);
 		if (err) {
 			DHD_ERROR(("%s: HT Avail request error: %d\n", __FUNCTION__, err));
-			return BCME_ERROR;
+			goto error;
 		}
 
 		if (pendok &&
@@ -534,7 +537,7 @@ dhdsdio_htclk(dhd_bus_t *bus, bool on, bool pendok)
 		clkctl = bcmsdh_cfg_read(sdh, SDIO_FUNC_1, SBSDIO_FUNC1_CHIPCLKCSR, &err);
 		if (err) {
 			DHD_ERROR(("%s: HT Avail read error: %d\n", __FUNCTION__, err));
-			return BCME_ERROR;
+			goto error;
 		}
 
 		/* Go to pending and await interrupt if appropriate */
@@ -544,14 +547,14 @@ dhdsdio_htclk(dhd_bus_t *bus, bool on, bool pendok)
 			if (err) {
 				DHD_ERROR(("%s: Devctl access error setting CA: %d\n",
 				           __FUNCTION__, err));
-				return BCME_ERROR;
+				goto error;
 			}
 
 			devctl |= SBSDIO_DEVCTL_CA_INT_ONLY;
 			bcmsdh_cfg_write(sdh, SDIO_FUNC_1, SBSDIO_DEVICE_CTL, devctl, &err);
 			DHD_INFO(("CLKCTL: set PENDING\n"));
 			bus->clkstate = CLK_PENDING;
-
+			htclk_fail = 0;
 			return BCME_OK;
 		} else if (bus->clkstate == CLK_PENDING) {
 			/* Cancel CA-only interrupt filter */
@@ -569,12 +572,12 @@ dhdsdio_htclk(dhd_bus_t *bus, bool on, bool pendok)
 		}
 		if (err) {
 			DHD_ERROR(("%s: HT Avail request error: %d\n", __FUNCTION__, err));
-			return BCME_ERROR;
+			goto error;
 		}
 		if (!SBSDIO_CLKAV(clkctl, bus->alp_only)) {
 			DHD_ERROR(("%s: HT Avail timeout (%d): clkctl 0x%02x\n",
 			           __FUNCTION__, PMU_MAX_TRANSITION_DLY, clkctl));
-			return BCME_ERROR;
+			goto error;
 		}
 
 
@@ -613,10 +616,20 @@ dhdsdio_htclk(dhd_bus_t *bus, bool on, bool pendok)
 		if (err) {
 			DHD_ERROR(("%s: Failed access turning clock off: %d\n",
 			           __FUNCTION__, err));
-			return BCME_ERROR;
+			goto error;
 		}
 	}
+	htclk_fail = 0;
 	return BCME_OK;
+//HTC_CSP_START
+error:
+	htclk_fail++;
+	if (htclk_fail >= 3) {
+		htclk_fail = 0;
+		dhd_info_send_hang_message(bus->dhd);
+	}
+	return BCME_ERROR;
+//HTC_CSP_END
 }
 
 /* Change idle/active SD state */

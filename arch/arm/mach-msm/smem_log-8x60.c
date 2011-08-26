@@ -690,6 +690,7 @@ static void smem_log_event_from_user(struct smem_log_inst *inst,
 	}
 
  out:
+	wmb();
 	remote_spin_unlock_irqrestore(inst->remote_spinlock, flags);
 }
 
@@ -725,7 +726,7 @@ static void _smem_log_event(
 	if (next_idx >= num)
 		next_idx = 0;
 	*_idx = next_idx;
-
+	wmb();
 	remote_spin_unlock_irqrestore(lock, flags);
 }
 
@@ -866,15 +867,20 @@ static int _smem_log_init(void)
 
 	ret = remote_spin_lock_init(&remote_spinlock,
 			      SMEM_SPINLOCK_SMEM_LOG);
-	if (ret)
+	if (ret) {
+		dsb();
 		return ret;
+	}
 
 	ret = remote_spin_lock_init(&remote_spinlock_static,
 			      SMEM_SPINLOCK_STATIC_LOG);
-	if (ret)
+	if (ret) {
+		dsb();
 		return ret;
+	}
 
 	init_syms();
+	dsb();
 
 	return 0;
 }

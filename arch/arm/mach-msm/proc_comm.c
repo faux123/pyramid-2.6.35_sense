@@ -119,6 +119,9 @@ int msm_proc_comm(unsigned cmd, unsigned *data1, unsigned *data2)
 		writel(data1 ? *data1 : 0, base + APP_DATA1);
 		writel(data2 ? *data2 : 0, base + APP_DATA2);
 
+		/* Make sure the writes complete before notifying the other side */
+		dsb();
+
 		notify_other_proc_comm();
 
 		if (proc_comm_wait_for(base + APP_COMMAND, PCOM_CMD_DONE))
@@ -138,8 +141,10 @@ int msm_proc_comm(unsigned cmd, unsigned *data1, unsigned *data2)
 
 	writel(PCOM_CMD_IDLE, base + APP_COMMAND);
 
-	spin_unlock_irqrestore(&proc_comm_lock, flags);
+	/* Make sure the writes complete before returning */
+	dsb();
 
+	spin_unlock_irqrestore(&proc_comm_lock, flags);
 	return ret;
 }
 

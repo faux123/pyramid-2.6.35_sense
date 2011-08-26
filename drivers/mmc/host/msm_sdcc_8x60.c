@@ -131,6 +131,15 @@ msmsdcc_print_status(struct msmsdcc_host *host, char *hdr, uint32_t status)
 }
 #endif
 
+static int is_mmc_platform(struct mmc_platform_data *plat)
+{
+	if (plat->slot_type && *plat->slot_type == MMC_TYPE_MMC)
+		return 1;
+
+	return 0;
+}
+
+
 static int is_svlte_platform(struct mmc_platform_data *plat)
 {
 	if (plat->slot_type && *plat->slot_type == MMC_TYPE_SDIO_SVLTE)
@@ -1278,14 +1287,13 @@ msmsdcc_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	/*
 	 * Enable clocks if they are already turned off
 	 */
-	if (mmc->card && !host->clks_on) {
-		if (host->sdcc_irq_disabled) {
-			enable_irq(host->irqres->start);
-			host->sdcc_irq_disabled = 0;
-		}
+	if (!host->clks_on)
 		msmsdcc_switch_clock(host->mmc, 1);
-	}
 
+	if (host->sdcc_irq_disabled) {
+		enable_irq(host->irqres->start);
+		host->sdcc_irq_disabled = 0;
+	}
 	WARN_ON(host->clks_on == 0);
 
 	if (host->plat->dummy52_required) {
@@ -1565,9 +1573,8 @@ static int msmsdcc_enable(struct mmc_host *mmc)
 	struct msmsdcc_host *host = mmc_priv(mmc);
 
 	if (atomic_read(&dev->power.usage_count) > 0) {
-		if (host->clks_on == 0) {
+		if (host->clks_on == 0 || host->sdcc_irq_disabled)
 			msmsdcc_runtime_resume(dev);
-		}
 		pm_runtime_get_noresume(dev);
 		goto out;
 	}
@@ -1827,8 +1834,8 @@ static void msmsdcc_req_tout_timer_hdlr(unsigned long data)
 	struct mmc_command *cmd;
 	unsigned long flags;
 
-	pr_info("%s: %s, pwr %d, clks_on %d\n", mmc_hostname(host->mmc),
-		__func__, host->pwr, host->clks_on);
+	pr_info("%s: %s, pwr %d, clks_on %d, irq_disable %d\n", mmc_hostname(host->mmc),
+		__func__, host->pwr, host->clks_on, host->sdcc_irq_disabled);
 	pr_info("%s: intmask0 0x%x, mciclock 0x%x\n", mmc_hostname(host->mmc),
 		readl(host->base + MMCIMASK0), readl(host->base + MMCICLOCK));
 	spin_lock_irqsave(&host->lock, flags);
@@ -2505,8 +2512,14 @@ msmsdcc_runtime_resume(struct device *dev)
 
 static int msmsdcc_runtime_idle(struct device *dev)
 {
+	struct mmc_host *mmc = dev_get_drvdata(dev);
+	struct msmsdcc_host *host = mmc_priv(mmc);
+
 	/* Idle timeout is not configurable for now */
-	pm_schedule_suspend(dev, MSM_MMC_IDLE_TIMEOUT);
+	if (is_mmc_platform(host->plat))
+		pm_schedule_suspend(dev, MSM_EMMC_IDLE_TIMEOUT);
+	else
+		pm_schedule_suspend(dev, MSM_MMC_IDLE_TIMEOUT);
 
 	return -EAGAIN;
 }

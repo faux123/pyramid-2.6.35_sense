@@ -132,7 +132,31 @@ endif
 endif
 
 ifeq ($(CONFIG_ARCH_MSM8X60),y)
+ifeq ($(CONFIG_MACH_VERDI_LTE),y)
+zreladdr-y             := 0x48008000
+params_phys-y            := 0x48000100
+initrd_phys-y            := 0x49000000
+else
+ifeq ($(CONFIG_MACH_PYRAMID),y)
+zreladdr-y             := 0x48008000
+params_phys-y            := 0x48000100
+initrd_phys-y            := 0x49000000
+else
+ifeq ($(CONFIG_MACH_SHOOTER_U),y)
+zreladdr-y             := 0x48008000
+params_phys-y            := 0x48000100
+initrd_phys-y            := 0x49000000
+else
+ifeq ($(CONFIG_MACH_SHOOTER_CT),y)
+zreladdr-y             := 0x48808000
+params_phys-y            := 0x48800100
+initrd_phys-y            := 0x49800000
+else
 zreladdr-y             := 0x40408000
 params_phys-y            := 0x40400100
 initrd_phys-y            := 0x41400000
+endif
+endif
+endif
+endif
 endif

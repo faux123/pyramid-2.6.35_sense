@@ -50,6 +50,12 @@
 #include "epautoconf.c"
 #include "composite.c"
 
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+#define fcADD_ACCESSORY_VID     1
+#else
+#define fcADD_ACCESSORY_VID     0
+#endif
+
 MODULE_AUTHOR("Mike Lockwood");
 MODULE_DESCRIPTION("Android Composite USB Driver");
 MODULE_LICENSE("GPL");
@@ -68,12 +74,15 @@ enum {
 	USB_FUNCTION_PROJECTOR,
 	USB_FUNCTION_FSYNC,
 	USB_FUNCTION_MTP,
-	USB_FUNCTION_MODEM,
+	USB_FUNCTION_MODEM, /* 8 */
 	USB_FUNCTION_ECM,
 	USB_FUNCTION_ACM,
-	USB_FUNCTION_DIAG_MDM,
+	USB_FUNCTION_DIAG_MDM, /* 11 */
 	USB_FUNCTION_RMNET,
+	USB_FUNCTION_ACCESSORY,
+	USB_FUNCTION_MODEM_MDM, /* 14 */
 	USB_FUNCTION_MTP36,
+	USB_FUNCTION_RNDIS_IPT = 31,
 };
 
 #define PID_RNDIS		0x0ffe
@@ -133,6 +142,7 @@ struct android_dev {
 	int num_functions;
 	char **functions;
 
+	int vendor_id;
 	int product_id;
 	int version;
 };
@@ -189,6 +199,9 @@ static const struct usb_descriptor_header *otg_desc[] = {
 
 static struct list_head _functions = LIST_HEAD_INIT(_functions);
 static int _registered_function_count = 0;
+#if fcADD_ACCESSORY_VID
+static int get_vendor_id(struct android_dev *dev);
+#endif
 static int get_product_id(struct android_dev *dev);
 
 void android_usb_set_connected(int connected)
@@ -216,6 +229,9 @@ static void bind_functions(struct android_dev *dev)
 	struct android_usb_function	*f;
 	char **functions = dev->functions;
 	int	product_id;
+    #if fcADD_ACCESSORY_VID
+int	vendor_id;
+    #endif
 	int i;
 
 	for (i = 0; i < dev->num_functions; i++) {
@@ -226,11 +242,21 @@ static void bind_functions(struct android_dev *dev)
 		else
 			printk(KERN_ERR "function %s not found in bind_functions\n", name);
 	}
+
+    #if fcADD_ACCESSORY_VID
+    vendor_id = get_vendor_id(dev);
+	printk(KERN_INFO "usb: vendor_id=0x%X\n", vendor_id);
+	device_desc.idVendor = __constant_cpu_to_le16(vendor_id);
+    #endif
 	product_id = get_product_id(dev);
 	printk(KERN_INFO "usb: product_id=0x%x\n", product_id);
 	device_desc.idProduct = __constant_cpu_to_le16(product_id);
-	if (dev->cdev)
+	if (dev->cdev) {
 		dev->cdev->desc.idProduct = device_desc.idProduct;
+    #if fcADD_ACCESSORY_VID
+		dev->cdev->desc.idVendor = device_desc.idVendor;
+    #endif
+	}
 }
 
 static int android_bind_config(struct usb_configuration *c)
@@ -340,6 +366,24 @@ static int product_matches_functions(struct android_usb_product *p)
 	return 1;
 }
 
+#if fcADD_ACCESSORY_VID
+static int get_vendor_id(struct android_dev *dev)
+{
+	struct android_usb_product *p = dev->products;
+	int count = dev->num_products;
+	int i;
+
+	if (p) {
+		for (i = 0; i < count; i++, p++) {
+			if (p->vendor_id && product_matches_functions(p))
+				return p->vendor_id;
+		}
+	}
+	/* use default vendor ID */
+	return dev->vendor_id;
+}
+#endif
+
 static int get_product_id(struct android_dev *dev)
 {
 	struct android_usb_product *p = dev->products;
@@ -390,6 +434,7 @@ static int android_bind(struct usb_composite_dev *cdev)
 
 	if (!usb_gadget_set_selfpowered(gadget))
 		android_config_driver.bmAttributes |= USB_CONFIG_ATT_SELFPOWER;
+
 #if 0
 	if (gadget->ops->wakeup)
 		android_config_driver.bmAttributes |= USB_CONFIG_ATT_WAKEUP;
@@ -483,9 +528,12 @@ int android_switch_function(unsigned func)
 	struct usb_function		*f;
 	struct android_dev *dev = _android_dev;
 	int product_id;
+#if fcADD_ACCESSORY_VID
+	int vendor_id;
+#endif
 	bool bNeedConfigUevent = false;
 
-	printk(KERN_INFO "%s: %u\n", __func__, func);
+	printk(KERN_INFO "%s: %x\n", __func__, func);
 
 	list_for_each_entry(f, &android_config_driver.functions, list) {
 #if 0
@@ -497,11 +545,11 @@ int android_switch_function(unsigned func)
 		 */
 		if (!strcmp(f->name, "usb_mass_storage")) {
 			if (f->hidden && (func & (1 << USB_FUNCTION_UMS)))	{
-				/* siwtch to enabled*/
+				/* siwtch to enabled */
 				f->hidden = 0;
 				kobject_uevent(&f->dev->kobj, KOBJ_CHANGE);
 			} else if (!f->hidden && !(func & (1 << USB_FUNCTION_UMS))) {
-				/* siwtch to disabled*/
+				/* siwtch to disabled */
 				f->hidden = 1;
 				kobject_uevent(&f->dev->kobj, KOBJ_CHANGE);
 			}
@@ -562,6 +610,11 @@ int android_switch_function(unsigned func)
 			!strcmp(f->name, "adb"))
 			f->hidden = 0;
 #endif
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+		else if ((func & (1 << USB_FUNCTION_ACCESSORY)) &&
+			!strcmp(f->name, "accessory"))
+			f->hidden = 0;
+#endif
 		else if ((func & (1 << USB_FUNCTION_PROJECTOR)) &&
 			!strcmp(f->name, "projector"))
 			f->hidden = 0;
@@ -581,10 +634,20 @@ int android_switch_function(unsigned func)
 			f->hidden = 1;
 		}
 	}
+#if fcADD_ACCESSORY_VID
+	vendor_id = get_vendor_id(dev);
+	printk(KERN_DEBUG "%s: vendor_id=%x\n", __func__, vendor_id);
+	device_desc.idVendor = __constant_cpu_to_le16(vendor_id);
+#endif
 	product_id = get_product_id(dev);
+	printk(KERN_DEBUG "%s: product_id=%x\n", __func__, product_id);
 	device_desc.idProduct = __constant_cpu_to_le16(product_id);
-	if (dev->cdev)
+	if (dev->cdev) {
+#if fcADD_ACCESSORY_VID
+		dev->cdev->desc.idVendor = device_desc.idVendor;
+#endif
 		dev->cdev->desc.idProduct = device_desc.idProduct;
+	}
 
 			/* We need to specify the COMM class in the device descriptor
 			 * if we are using RNDIS.
@@ -597,23 +660,15 @@ int android_switch_function(unsigned func)
 	if (bNeedConfigUevent)
 		printk(KERN_DEBUG "[USB] %s: Send usb_configuration uevent\n", __func__);
 #ifdef CONFIG_USB_GADGET_MSM_72K
-	/* avoid sending a disconnect switch event until after we disconnect */
-	if (!bNeedConfigUevent)
-		dev->cdev->mute_switch = 1;
 	msm_hsusb_request_reset();
 #else
 	/* force reenumeration */
 	if (dev->cdev && dev->cdev->gadget &&
 			dev->cdev->gadget->speed != USB_SPEED_UNKNOWN) {
-
-		/* avoid sending a disconnect switch event until after we disconnect */
-		if (!bNeedConfigUevent)
-			dev->cdev->mute_switch = 1;
-
 		usb_gadget_disconnect(dev->cdev->gadget);
 		msleep(10);
 		usb_gadget_connect(dev->cdev->gadget);
-		}
+	}
 #endif
 	return 0;
 }
@@ -623,16 +678,44 @@ void android_enable_function(struct usb_function *f, int enable)
 	struct android_dev *dev = _android_dev;
 	int disable = !enable;
 	int product_id;
+#if fcADD_ACCESSORY_VID
+	int vendor_id;
+#endif
 
 	if (!!f->hidden != disable) {
 		f->hidden = disable;
 	/* send uevent when state changed	*/
 		if (f && (f->dev))
 			kobject_uevent(&f->dev->kobj, KOBJ_CHANGE);
+
+#ifdef CONFIG_USB_ANDROID_ACCESSORY
+		if (!strcmp(f->name, "accessory") && enable) {
+		struct usb_function		*func;
+
+			/* disable everything else (and keep adb for now) */
+			list_for_each_entry(func, &android_config_driver.functions, list) {
+				if (strcmp(func->name, "accessory")
+					&& strcmp(func->name, "adb")) {
+					usb_function_set_enabled_mute(func, 0, true);
+				}
+			}
+		}
+#endif
+#if fcADD_ACCESSORY_VID
+		vendor_id = get_vendor_id(dev);
+		device_desc.idVendor = __constant_cpu_to_le16(vendor_id);
+#endif
 		product_id = get_product_id(dev);
 		device_desc.idProduct = __constant_cpu_to_le16(product_id);
-		if (dev->cdev)
+#if fcADD_ACCESSORY_VID
+		printk(KERN_DEBUG "[USB] android_enable_function: vendor_id=%X,product_id=%X\n", vendor_id, product_id);
+#endif
+		if (dev->cdev) {
+#if fcADD_ACCESSORY_VID
+			dev->cdev->desc.idVendor = device_desc.idVendor;
+#endif
 			dev->cdev->desc.idProduct = device_desc.idProduct;
+		}
 
 #ifdef CONFIG_USB_ANDROID_RNDIS
 		/* We need to specify the COMM class in the device descriptor
@@ -649,6 +732,8 @@ void android_enable_function(struct usb_function *f, int enable)
 		else
 			dev->cdev->desc.bDeviceClass = USB_CLASS_PER_INTERFACE;
 #ifdef CONFIG_USB_GADGET_MSM_72K
+		if (!strcmp(f->name, "adb") || !strcmp(f->name, "mtp"))
+			composite_func_enable_event(dev->cdev);
 		msm_hsusb_request_reset();
 #else
 		/* force reenumeration */
@@ -686,9 +771,14 @@ static int android_probe(struct platform_device *pdev)
 		dev->num_products = pdata->num_products;
 		dev->functions = pdata->functions;
 		dev->num_functions = pdata->num_functions;
-		if (pdata->vendor_id)
+
+		if (pdata->vendor_id) {
+#if fcADD_ACCESSORY_VID
+			dev->vendor_id = pdata->vendor_id;
+#endif
 			device_desc.idVendor =
 				__constant_cpu_to_le16(pdata->vendor_id);
+		}
 		if (pdata->product_id) {
 			dev->product_id = pdata->product_id;
 			device_desc.idProduct =

@@ -180,7 +180,7 @@ static int hs_pmic_adc_to_keycode(int adc)
 	else if (adc >= hi->pdata.adc_remote[4] &&
 		 adc <= hi->pdata.adc_remote[5])
 		key_code = HS_MGR_KEY_FORWARD;
-	else if (adc >= hi->pdata.adc_mic)
+	else if (adc > hi->pdata.adc_remote[5])
 		key_code = HS_MGR_KEY_NONE;
 
 	if (key_code != HS_MGR_KEY_INVALID)

@@ -16,6 +16,7 @@
  *
  */
 #include <mach/panel_id.h>
+#include <mach/htc_battery_common.h>
 #include "msm_fb.h"
 #include "mipi_dsi.h"
 #include "mipi_novatek.h"
@@ -1812,7 +1813,8 @@ static int mipi_dsi_set_backlight(struct msm_fb_data_type *mfd)
 	else
 		led_pwm1[1] = (unsigned char)(mfd->bl_level);
 
-	if(mfd->bl_level == 0 || board_mfg_mode() == 4 || board_mfg_mode() == 5) {
+	if(mfd->bl_level == 0 || board_mfg_mode() == 4 ||
+	(board_mfg_mode() == 5 && ! (htc_battery_get_zcharge_mode() % 2))) {
 		//mipi_dsi_op_mode_config(DSI_CMD_MODE);
 		//mipi_dsi_cmds_tx(&novatek_tx_buf, novatek_bkl_disable_cmds,
 			//ARRAY_SIZE(novatek_bkl_disable_cmds));

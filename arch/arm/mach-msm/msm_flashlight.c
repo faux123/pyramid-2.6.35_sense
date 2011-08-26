@@ -396,6 +396,24 @@ int aat1271_flashlight_control(int mode)
 		this_fl_str->mode_status = FL_MODE_TORCH_LEVEL_2;
 		this_fl_str->fl_lcdev.brightness = LED_HALF - 1;
 	break;
+	case FL_MODE_CAMERA_EFFECT_PRE_FLASH:
+		flashlight_hw_command(3, 12);
+		flashlight_hw_command(0, 1);
+		flashlight_hw_command(2, 4);
+		this_fl_str->mode_status = FL_MODE_CAMERA_EFFECT_PRE_FLASH;
+		this_fl_str->fl_lcdev.brightness = 3;
+	break;
+	case FL_MODE_CAMERA_EFFECT_FLASH:
+		flashlight_hw_command(3, 1);
+		flashlight_hw_command(0, 1);
+		flashlight_hw_command(2, 4);
+		this_fl_str->mode_status = FL_MODE_CAMERA_EFFECT_FLASH;
+		this_fl_str->fl_lcdev.brightness = 4;
+		hrtimer_start(&this_fl_str->timer,
+			ktime_set(this_fl_str->flash_sw_timeout_ms / 1000,
+				(this_fl_str->flash_sw_timeout_ms % 1000) *
+					NSEC_PER_MSEC), HRTIMER_MODE_REL);
+	break;
 
 	default:
 		FLT_ERR_LOG("%s: unknown flash_light flags: %d\n",
@@ -429,6 +447,10 @@ static void fl_lcdev_brightness_set(struct led_classdev *led_cdev,
 			mode = FL_MODE_TORCH_LED_A;
 		else if (brightness == 2 && fl_str->led_count)
 			mode = FL_MODE_TORCH_LED_B;
+		else if (brightness == 3 && fl_str->led_count)
+			mode = FL_MODE_CAMERA_EFFECT_PRE_FLASH;
+		else if (brightness == 4 && fl_str->led_count)
+			mode = FL_MODE_CAMERA_EFFECT_FLASH;
 		else
 			mode = FL_MODE_TORCH;
 	} else if (brightness > LED_HALF && brightness <= LED_FULL) {

@@ -76,7 +76,7 @@ static void pet_watchdog_work(struct work_struct *work);
 static DECLARE_DELAYED_WORK(dogwork_struct, pet_watchdog_work);
 
 static unsigned int last_irqs[NR_IRQS];
-static void wtd_dump_irqs(unsigned int dump)
+void wtd_dump_irqs(unsigned int dump)
 {
 	int n;
 	if (dump) {
@@ -97,7 +97,7 @@ static void wtd_dump_irqs(unsigned int dump)
 		last_irqs[n] = kstat_irqs(n);
 	}
 }
-
+EXPORT_SYMBOL(wtd_dump_irqs);
 static int kernel_flag_boot_config(char *str)
 {
 	unsigned long kernelflag;
@@ -122,6 +122,7 @@ int msm_watchdog_suspend(void)
 	if (enable) {
 		writel(1, WDT0_RST);
 		writel(0, WDT0_EN);
+		dsb();
 		printk(KERN_INFO "msm_watchdog_suspend");
 	}
 	return NOTIFY_DONE;
@@ -152,11 +153,13 @@ static int panic_wdog_handler(struct notifier_block *this,
 {
 	if (panic_timeout == 0) {
 		writel(0, WDT0_EN);
+		dsb();
 		secure_writel(0, MSM_TCSR_BASE + TCSR_WDT_CFG);
 	} else {
 		writel(32768 * (panic_timeout + 4), WDT0_BARK_TIME);
 		writel(32768 * (panic_timeout + 4), WDT0_BITE_TIME);
 		writel(1, WDT0_RST);
+		dsb();
 	}
 	return NOTIFY_DONE;
 }
@@ -186,6 +189,7 @@ static void __exit exit_watchdog(void)
 	if (enable) {
 		writel(0, WDT0_EN);
 		writel(0, WDT0_EN); /* In case we got suspended mid-exit */
+		dsb();
 		secure_writel(0, MSM_TCSR_BASE + TCSR_WDT_CFG);
 		free_irq(WDT0_ACCSCSSNBARK_INT, 0);
 		enable = 0;
@@ -245,7 +249,7 @@ static irqreturn_t wdog_bark_handler(int irq, void *dev_id)
 static int __init init_watchdog(void)
 {
 	int ret;
-	void *regsave;
+
 	struct {
 		unsigned addr;
 		int len;
@@ -276,29 +280,19 @@ static int __init init_watchdog(void)
 
 #ifdef CONFIG_MSM_SCM
 	if (!appsbark) {
-		regsave = (void *)__get_free_page(GFP_KERNEL);
+		cmd_buf.addr = MSM_TZ_HANDLE_BARK_REG_SAVE_PHYS;
+		cmd_buf.len  = MSM_TZ_HANDLE_BARK_REG_SAVE_SIZE;
 
-		if (regsave) {
-			cmd_buf.addr = __pa(regsave);
-			cmd_buf.len  = PAGE_SIZE;
-
-			ret = scm_call(SCM_SVC_UTIL, SCM_SET_REGSAVE_CMD, &cmd_buf,
-				sizeof(cmd_buf), NULL, 0);
-			if (ret)
-				pr_err("Setting register save address failed.\n"
-				"Registers won't be dumped on a dog bite\n");
-			else
-				pr_info("%s: regsave address = 0x%X\n",
-					__func__, cmd_buf.addr);
-		} else
-			pr_err("Allocating register save space failed\n"
+		ret = scm_call(SCM_SVC_UTIL, SCM_SET_REGSAVE_CMD, &cmd_buf,
+			sizeof(cmd_buf), NULL, 0);
+		if (ret)
+			pr_err("Setting register save address failed.\n"
 			"Registers won't be dumped on a dog bite\n");
-			/*
-			* No need to bail if allocation fails. Simply don't send the
-			* command, and the secure side will reset without saving
-			* registers.
-			*/
-	}
+		else
+			pr_debug("%s: regsave address = 0x%X\n",
+				__func__, cmd_buf.addr);
+	} else
+		pr_info("%s: dogbark processed by apps side\n", __func__);
 #endif
 	secure_writel(1, MSM_TCSR_BASE + TCSR_WDT_CFG);
 	delay_time = msecs_to_jiffies(PET_DELAY);

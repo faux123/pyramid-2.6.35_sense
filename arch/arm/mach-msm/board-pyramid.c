@@ -147,6 +147,8 @@ extern int panel_type;
 #define PM8058_MPP_BASE			(PM8058_GPIO_BASE + PM8058_GPIOS)
 #define PM8058_MPP_PM_TO_SYS(pm_gpio)		(pm_gpio + PM8058_MPP_BASE)
 
+/* Speed bin register. */
+#define QFPROM_SPEED_BIN_ADDR		(MSM_QFPROM_BASE + 0x00C0)
 
 // -----------------------------------------------------------------------------
 //                         External routine declaration
@@ -1063,7 +1065,7 @@ static struct msm_camera_sensor_flash_data flash_s5k3h1gx = {
 
 static struct camera_flash_cfg msm_camera_sensor_flash_cfg = {
 	.low_temp_limit		= 5,
-	.low_cap_limit		= 15,
+	.low_cap_limit		= 30,
 };
 
 static struct msm_camera_sensor_info msm_camera_sensor_s5k3h1gx_data = {
@@ -1506,9 +1508,14 @@ static void __init msm8x60_init_dsps(void)
 #define MSM_PMEM_SF_SIZE 0x4000000 /* 64 Mbytes */
 #define MSM_OVERLAY_BLT_SIZE   roundup(0x500000, 4096)
 
-#define MSM_PMEM_KERNEL_EBI1_SIZE  0x600000
 #define MSM_PMEM_ADSP_SIZE         0x2000000
 #define MSM_PMEM_AUDIO_SIZE        0x239000
+
+#define MSM_PMEM_SF_BASE		(0x70000000 - MSM_PMEM_SF_SIZE)
+#define MSM_OVERLAY_BLT_BASE	(0x45C00000)
+#define MSM_PMEM_AUDIO_BASE	(0x46400000)
+#define MSM_PMEM_ADSP_BASE	(0x40400000)
+#define MSM_FB_BASE	(MSM_PMEM_ADSP_BASE + MSM_PMEM_ADSP_SIZE)
 
 #define MSM_SMI_BASE          0x38000000
 /* Kernel SMI PMEM Region for video core, used for Firmware */
@@ -1530,16 +1537,6 @@ static int __init fb_size_setup(char *p)
 	return 0;
 }
 early_param("fb_size", fb_size_setup);
-
-#ifdef CONFIG_KERNEL_PMEM_EBI_REGION
-static unsigned pmem_kernel_ebi1_size = MSM_PMEM_KERNEL_EBI1_SIZE;
-static int __init pmem_kernel_ebi1_size_setup(char *p)
-{
-	pmem_kernel_ebi1_size = memparse(p, NULL);
-	return 0;
-}
-early_param("pmem_kernel_ebi1_size", pmem_kernel_ebi1_size_setup);
-#endif
 
 #ifdef CONFIG_ANDROID_PMEM
 static unsigned pmem_sf_size = MSM_PMEM_SF_SIZE;
@@ -1596,20 +1593,6 @@ static struct platform_device wifi_bt_slp_clk = {
 	.dev = {
 		.platform_data = &htc_slp_clk_data,
 	},
-};
-#endif
-
-#ifdef CONFIG_KERNEL_PMEM_EBI_REGION
-static struct android_pmem_platform_data android_pmem_kernel_ebi1_pdata = {
-	.name = PMEM_KERNEL_EBI1_DATA_NAME,
-	.allocator_type = PMEM_ALLOCATORTYPE_BITMAP,
-	.cached = 0,
-};
-
-static struct platform_device android_pmem_kernel_ebi1_device = {
-	.name = "android_pmem",
-	.id = 1,
-	.dev = { .platform_data = &android_pmem_kernel_ebi1_pdata },
 };
 #endif
 
@@ -1677,26 +1660,6 @@ static struct platform_device android_pmem_smipool_device = {
 
 #endif
 
-#ifdef CONFIG_HTC_EXTDIAG
-static unsigned extdiag_size = 0;
-static unsigned extdiag_enabled = 0;
-static struct resource extdiag_resources[] = {
-	[0] = {
-		.name  = "htc_extdiag_base",
-//		.start = PHY_BASE_ADDR2,
-//		.end   = PHY_BASE_ADDR2 + SZ_32M - 1,
-		.flags  = IORESOURCE_MEM,
-	},
-};
-
-static struct platform_device extdiag_device = {
-	.name = "htc_extdiag",
-	.id = -1,
-	.num_resources     = ARRAY_SIZE(extdiag_resources),
-	.resource          = extdiag_resources,
-};
-#endif /* CONFIG_HTC_EXTDIAG */
-
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
 static struct resource hdmi_msm_resources[] = {
 	{
@@ -1745,34 +1708,21 @@ static struct platform_device *hdmi_devices[] __initdata = {
 
 static void __init msm8x60_allocate_memory_regions(void)
 {
-	void *addr;
 	unsigned long size;
 
 	size = MSM_FB_SIZE;
-	addr = alloc_bootmem(size);
-	msm_fb_resources[0].start = __pa(addr);
+	msm_fb_resources[0].start = MSM_FB_BASE;
 	msm_fb_resources[0].end = msm_fb_resources[0].start + size - 1;
 	pr_info("allocating %lu bytes at %p (%lx physical) for fb\n",
-		size, addr, __pa(addr));
+		size, __va(MSM_FB_BASE), (unsigned long)MSM_FB_BASE);
 
-	addr = alloc_bootmem(MSM_OVERLAY_BLT_SIZE);
-	msm_fb_resources[1].start = __pa(addr);
+	msm_fb_resources[1].start = MSM_OVERLAY_BLT_BASE;
 	msm_fb_resources[1].end = msm_fb_resources[1].start +
 		MSM_OVERLAY_BLT_SIZE - 1;
 	pr_info("allocating %lu bytes at %p (%lx physical) for"
 		"overlay write back\n", (unsigned long)MSM_OVERLAY_BLT_SIZE,
-		addr, __pa(addr));
-
-#ifdef CONFIG_KERNEL_PMEM_EBI_REGION
-	size = pmem_kernel_ebi1_size;
-	if (size) {
-		addr = alloc_bootmem_aligned(size, 0x100000);
-		android_pmem_kernel_ebi1_pdata.start = __pa(addr);
-		android_pmem_kernel_ebi1_pdata.size = size;
-		pr_info("allocating %lu bytes at %p (%lx physical) for kernel"
-			" ebi1 pmem arena\n", size, addr, __pa(addr));
-	}
-#endif
+		__va(MSM_OVERLAY_BLT_BASE),
+		(unsigned long)MSM_OVERLAY_BLT_BASE);
 
 #ifdef CONFIG_KERNEL_PMEM_SMI_REGION
 	size = PMEM_KERNEL_SMI_SIZE;
@@ -1788,11 +1738,11 @@ static void __init msm8x60_allocate_memory_regions(void)
 #ifdef CONFIG_ANDROID_PMEM
 	size = pmem_adsp_size;
 	if (size) {
-		addr = alloc_bootmem(size);
-		android_pmem_adsp_pdata.start = __pa(addr);
+		android_pmem_adsp_pdata.start = MSM_PMEM_ADSP_BASE;
 		android_pmem_adsp_pdata.size = size;
 		pr_info("allocating %lu bytes at %p (%lx physical) for adsp "
-			"pmem arena\n", size, addr, __pa(addr));
+			"pmem arena\n", size, __va(MSM_PMEM_ADSP_BASE),
+			(unsigned long)MSM_PMEM_ADSP_BASE);
 	}
 
 	size = MSM_PMEM_SMIPOOL_SIZE;
@@ -1806,20 +1756,20 @@ static void __init msm8x60_allocate_memory_regions(void)
 
 	size = MSM_PMEM_AUDIO_SIZE;
 	if (size) {
-		addr = alloc_bootmem(size);
-		android_pmem_audio_pdata.start = __pa(addr);
+		android_pmem_audio_pdata.start = MSM_PMEM_AUDIO_BASE;
 		android_pmem_audio_pdata.size = size;
 		pr_info("allocating %lu bytes at %p (%lx physical) for audio "
-			"pmem arena\n", size, addr, __pa(addr));
+			"pmem arena\n", size, __va(MSM_PMEM_AUDIO_BASE),
+			(unsigned long)MSM_PMEM_AUDIO_BASE);
 	}
 
 	size = pmem_sf_size;
 	if (size) {
-		addr = alloc_bootmem(size);
-		android_pmem_pdata.start = __pa(addr);
+		android_pmem_pdata.start = MSM_PMEM_SF_BASE;
 		android_pmem_pdata.size = size;
 		pr_info("allocating %lu bytes at %p (%lx physical) for sf "
-			"pmem arena\n", size, addr, __pa(addr));
+			"pmem arena\n", size,  __va(MSM_PMEM_SF_BASE),
+			(unsigned long)MSM_PMEM_SF_BASE);
 	}
 #endif
 }
@@ -2429,6 +2379,42 @@ static struct platform_device htc_headset_mgr = {
 	},
 };
 
+static struct pm8058_led_config pm_led_config_LE[] = {
+	{
+		.name = "green",
+		.type = PM8058_LED_RGB,
+		.bank = 0,
+		.pwm_size = 9,
+		.clk = PM_PWM_CLK_32KHZ,
+		.pre_div = PM_PWM_PREDIVIDE_2,
+		.pre_div_exp = 1,
+		.pwm_value = 511,
+	},
+	{
+		.name = "amber",
+		.type = PM8058_LED_RGB,
+		.bank = 1,
+		.pwm_size = 9,
+		.clk = PM_PWM_CLK_32KHZ,
+		.pre_div = PM_PWM_PREDIVIDE_2,
+		.pre_div_exp = 1,
+		.pwm_value = 511,
+	},
+	{
+		.name = "button-backlight",
+		.type = PM8058_LED_DRVX,
+		.bank = 6,
+		.flags = PM8058_LED_LTU_EN,
+		.period_us = USEC_PER_SEC / 1000,
+		.start_index = 0,
+		.duites_size = 8,
+		.duty_time_ms = 32,
+		.lut_flag = PM_PWM_LUT_RAMP_UP | PM_PWM_LUT_PAUSE_HI_EN,
+		.out_current = 40,
+	},
+
+};
+
 static struct pm8058_led_config pm_led_config[] = {
 	{
 		.name = "green",
@@ -2515,6 +2501,8 @@ static struct platform_device scm_log_device = {
 static struct platform_device *surf_devices[] __initdata = {
 	&ram_console_device,
 	&msm_device_smd,
+	&msm_device_dmov_adm0,
+	&msm_device_dmov_adm1,
 	&msm_device_uart_dm12,
 #ifdef CONFIG_I2C_QUP
 	&msm_gsbi4_qup_i2c_device,
@@ -2553,9 +2541,6 @@ static struct platform_device *surf_devices[] __initdata = {
 #endif
 #ifdef CONFIG_BATTERY_MSM
 	&msm_batt_device,
-#endif
-#ifdef CONFIG_KERNEL_PMEM_EBI_REGION
-	&android_pmem_kernel_ebi1_device,
 #endif
 #ifdef CONFIG_KERNEL_PMEM_SMI_REGION
 	&android_pmem_kernel_smi_device,
@@ -4861,6 +4846,10 @@ static void __init pyramid_init(void)
 {
 	int ret = 0;
 	struct kobject *properties_kobj;
+	uint32_t raw_speed_bin, speed_bin;
+
+	raw_speed_bin = readl(QFPROM_SPEED_BIN_ADDR);
+	speed_bin = raw_speed_bin & 0xF;
 	/*
 	 * Initialize RPM first as other drivers and devices may need
 	 * it for their initialization.
@@ -4943,6 +4932,11 @@ static void __init pyramid_init(void)
 		printk(KERN_INFO "[HS_BOARD] (%s) Set MEMS config\n", __func__);
 	}
 
+	if (speed_bin == 0x1) {
+		pm8058_leds_data.led_config = pm_led_config_LE;
+		pm8058_leds_data.num_leds = ARRAY_SIZE(pm_led_config_LE);
+	}
+
 	if (machine_is_pyramid()) {
 		platform_add_devices(surf_devices,
 				     ARRAY_SIZE(surf_devices));
@@ -4986,59 +4980,23 @@ static void __init pyramid_init(void)
 
 	sysinfo_proc_init();
 
-#ifdef CONFIG_HTC_EXTDIAG
-	if (extdiag_enabled) {
-		pr_info("register extdiag device\n");
-		platform_device_register(&extdiag_device);
-	}
-#endif
 	msm_mpm_set_irq_ignore_list(irq_ignore_tbl, irq_num_ignore_tbl);
 	msm_clk_soc_set_ignore_list(clk_ignore_tbl, clk_num_ignore_tbl);
 }
 
-#define PHY_BASE_ADDR1  0x40400000
-#define SIZE_ADDR1      0x02A00000
+#define PHY_BASE_ADDR1  0x48000000
+#define SIZE_ADDR1      0x24000000
 
-#define PHY_BASE_ADDR2  0x48000000
-#define SIZE_ADDR2      0x28000000
 
-#define PHY_BASE_ADDR3  0x45C00000
-#define SIZE_ADDR3      0x00500000
-
-#define PHY_BASE_ADDR4  0x46400000
-#define SIZE_ADDR4      0x00300000
 
 static void __init pyramid_fixup(struct machine_desc *desc, struct tag *tags,
 				 char **cmdline, struct meminfo *mi)
 {
 	engineerid = parse_tag_engineerid(tags);
-	mi->nr_banks = 4;
+	mi->nr_banks = 1;
 	mi->bank[0].start = PHY_BASE_ADDR1;
 	mi->bank[0].node = PHYS_TO_NID(PHY_BASE_ADDR1);
 	mi->bank[0].size = SIZE_ADDR1;
-	mi->bank[1].start = PHY_BASE_ADDR2;
-	mi->bank[1].node = PHYS_TO_NID(PHY_BASE_ADDR2);
-	mi->bank[1].size = SIZE_ADDR2;
-	mi->bank[2].start = PHY_BASE_ADDR3;
-	mi->bank[2].node = PHYS_TO_NID(PHY_BASE_ADDR3);
-	mi->bank[2].size = SIZE_ADDR3;
-	mi->bank[3].start = PHY_BASE_ADDR4;
-	mi->bank[3].node = PHYS_TO_NID(PHY_BASE_ADDR4);
-	mi->bank[3].size = SIZE_ADDR4;
-
-#ifdef CONFIG_HTC_EXTDIAG
-	if (parse_tag_extdiag(tags)) {
-		extdiag_enabled = 1;
-		extdiag_size = SZ_32M;
-
-		extdiag_resources[0].start = PHY_BASE_ADDR2;
-		extdiag_resources[0].end = PHY_BASE_ADDR2 + extdiag_size - 1;
-
-		mi->bank[1].start = PHY_BASE_ADDR2 + extdiag_size;
-		mi->bank[1].node = PHYS_TO_NID(PHY_BASE_ADDR2 + extdiag_size);
-		mi->bank[1].size = SIZE_ADDR2 - extdiag_size;
-	}
-#endif
 }
 
 MACHINE_START(PYRAMID, "pyramid")

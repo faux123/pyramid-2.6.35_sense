@@ -337,10 +337,6 @@ void __init smp_prepare_boot_cpu(void)
 	per_cpu(cpu_data, cpu).idle = current;
 }
 
-//Debug CPU1 power collapse fail issue
-int cpu1_ipi = 0;
-int cpu0_ipi = 0;
-
 static void send_ipi_message(const struct cpumask *mask, enum ipi_msg_type msg)
 {
 	unsigned long flags;
@@ -353,11 +349,6 @@ static void send_ipi_message(const struct cpumask *mask, enum ipi_msg_type msg)
 
 		spin_lock(&ipi->lock);
 		ipi->bits |= 1 << msg;
-		//Debug CPU1 power collapse fail issue
-		if(cpu == 1)
-			cpu1_ipi = ipi->bits;
-		else
-			cpu0_ipi = ipi->bits;
 		spin_unlock(&ipi->lock);
 	}
 
@@ -561,7 +552,6 @@ asmlinkage void __exception do_IPI(struct pt_regs *regs)
 void smp_send_reschedule(int cpu)
 {
 	if (unlikely(cpu_is_offline(cpu))) {
-		WARN_ON(1);
 		return;
 	}
 

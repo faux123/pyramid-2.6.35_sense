@@ -390,8 +390,6 @@ static void report_psensor_input_event(struct isl29029_info *lpi,
 		ISL29029_INTERRUPT, ISL29029_INT_ALS_FLAG);
 	if (ret < 0)
 		EPS("%s: clear lsensor intr flag fail\n", __func__);
-
-	wake_lock_timeout(&(lpi->ps_wake_lock), 2*HZ);
 }
 
 static void report_lsensor_input_event(struct isl29029_info *lpi)
@@ -533,8 +531,11 @@ static void sensor_irq_do_work(struct work_struct *work)
 	char buffer[2];
 	int ret = 0;
 	int value1 = -1;
+	static int count;
 
 	uint16_t ps_adc = 0;
+
+	wake_lock_timeout(&(lpi->ps_wake_lock), 3*HZ);
 
 	value1 = gpio_get_value(lpi->intr_pin);
 	/*DPS("%s: lpi->intr_pin = %d\n", __func__, value1);*/
@@ -542,8 +543,18 @@ static void sensor_irq_do_work(struct work_struct *work)
 	buffer[0] = ISL29029_INTERRUPT;
 	ret = I2C_RxData(buffer, 1);
 	if (ret < 0) {
-		EPS("%s: I2C_RxData fail (ISL29029_INTERRUPT)\n",
-			__func__);
+		EPS("%s: I2C_RxData %d fail (ISL29029_INTERRUPT)\n",
+			__func__, count);
+
+		if (count < 5)
+			count++;
+		else {
+			count = 0;
+			input_report_abs(lpi->ps_input_dev, ABS_DISTANCE, 1);
+			input_sync(lpi->ps_input_dev);
+			blocking_notifier_call_chain(&psensor_notifier_list, 3, NULL);
+		}
+
 		enable_irq(lpi->irq);
 		return;
 	}
@@ -552,8 +563,18 @@ static void sensor_irq_do_work(struct work_struct *work)
 	buffer[0] = ISL29029_CONFIGURE;
 	ret = I2C_RxData(buffer, 1);
 	if (ret < 0) {
-		EPS("%s: I2C_RxData fail (ISL29029_CONFIGURE)\n",
-			__func__);
+		EPS("%s: I2C_RxData %d fail (ISL29029_CONFIGURE)\n",
+			__func__, count);
+
+		if (count < 5)
+			count++;
+		else {
+			count = 0;
+			input_report_abs(lpi->ps_input_dev, ABS_DISTANCE, 1);
+			input_sync(lpi->ps_input_dev);
+			blocking_notifier_call_chain(&psensor_notifier_list, 3, NULL);
+		}
+
 		enable_irq(lpi->irq);
 		return;
 	}
@@ -576,6 +597,8 @@ static void sensor_irq_do_work(struct work_struct *work)
 	check_and_recover(lpi);
 
 	enable_irq(lpi->irq);
+
+	count = 0;
 }
 
 static void info_do_work(struct work_struct *w)
@@ -727,6 +750,7 @@ static int psensor_enable(struct isl29029_info *lpi)
 	IPS("isl_irq: ps_adc = 0x%02X, ps_lt = 0x%02X, ps_ht = 0x%02X\n",
 		ps_adc, lpi->ps_lt, lpi->ps_ht);
 
+	wake_lock_timeout(&(lpi->ps_wake_lock), 2*HZ);
 	report_psensor_input_event(lpi, ps_adc);
 
 	ret = _isl29029_set_reg_bit(lpi->i2c_client, 1,

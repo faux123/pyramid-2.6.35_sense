@@ -525,18 +525,44 @@ static struct msm_bus_vectors grp3d_init_vectors[] = {
 	},
 };
 
+static struct msm_bus_vectors grp3d_nominal_low_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_GRAPHICS_3D,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 0,
+		.ib = 1397000000U,
+	},
+};
+
+static struct msm_bus_vectors grp3d_nominal_high_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_GRAPHICS_3D,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 0,
+		.ib = 2096000000U,
+	},
+};
+
 static struct msm_bus_vectors grp3d_max_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_GRAPHICS_3D,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab = 2096000000U,
-		.ib = 2096000000U,
+		.ab = 2484000000U,
+		.ib = 2484000000U,
 	},
 };
 
 static struct msm_bus_paths grp3d_bus_scale_usecases[] = {
 	{
 		ARRAY_SIZE(grp3d_init_vectors),
+		grp3d_init_vectors,
+	},
+	{
+		ARRAY_SIZE(grp3d_nominal_low_vectors),
+		grp3d_init_vectors,
+	},
+	{
+		ARRAY_SIZE(grp3d_nominal_high_vectors),
 		grp3d_init_vectors,
 	},
 	{
@@ -565,7 +591,7 @@ static struct msm_bus_vectors grp2d0_max_vectors[] = {
 		.src = MSM_BUS_MASTER_GRAPHICS_2D_CORE0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab = 0,
-		.ib = 2096000000U,
+		.ib = 1397000000U,
 	},
 };
 
@@ -600,7 +626,7 @@ static struct msm_bus_vectors grp2d1_max_vectors[] = {
 		.src = MSM_BUS_MASTER_GRAPHICS_2D_CORE1,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab = 0,
-		.ib = 2096000000U,
+		.ib = 1397000000U,
 	},
 };
 
@@ -638,20 +664,39 @@ struct platform_device msm_device_rng = {
 #endif
 
 struct kgsl_platform_data kgsl_pdata = {
-#ifdef CONFIG_MSM_NPA_SYSTEM_BUS
-	/* NPA Flow IDs */
-	.high_axi_3d = MSM_AXI_FLOW_3D_GPU_HIGH,
-	.high_axi_2d = MSM_AXI_FLOW_2D_GPU_HIGH,
-#else
-	/* AXI rates in KHz */
-	.high_axi_3d = 200000,
-	.high_axi_2d = 160000,
-#endif
-	.max_grp2d_freq = 228571000,
-	.min_grp2d_freq = 228571000,
-	.set_grp2d_async = NULL, /* HW workaround, run Z180 SYNC @ 192 MHZ */
-	.max_grp3d_freq = 266667000,
-	.min_grp3d_freq = 266667000,
+	.pwrlevel_2d = {
+		{
+			.gpu_freq = 200000000,
+			.bus_freq = 1,
+		},
+		{
+			.gpu_freq = 200000000,
+			.bus_freq = 0,
+		},
+	},
+	.init_level_2d = 0,
+	.num_levels_2d = 2,
+	.pwrlevel_3d = {
+		{
+			.gpu_freq = 266667000,
+			.bus_freq = 3,
+		},
+		{
+			.gpu_freq = 228571000,
+			.bus_freq = 2,
+		},
+		{
+			.gpu_freq = 200000000,
+			.bus_freq = 1,
+		},
+		{
+			.gpu_freq = 27000000,
+			.bus_freq = 0,
+		},
+	},
+	.init_level_3d = 0,
+	.num_levels_3d = 4,
+	.set_grp2d_async = NULL,
 	.set_grp3d_async = NULL,
 	.imem_clk_name = "imem_axi_clk",
 	.imem_pclk_name = "imem_pclk",
@@ -673,6 +718,7 @@ struct kgsl_platform_data kgsl_pdata = {
 	.grp2d0_bus_scale_table = &grp2d0_bus_scale_pdata,
 	.grp2d1_bus_scale_table = &grp2d1_bus_scale_pdata,
 	.nap_allowed = true,
+	.idle_pass = true,
 #endif
 #ifdef CONFIG_KGSL_PER_PROCESS_PAGE_TABLE
 	.pt_va_size = SZ_128M,
@@ -1677,6 +1723,36 @@ struct platform_device msm_device_smd = {
 	.id             = -1,
 };
 
+struct resource msm_dmov_resource_adm0[] = {
+	{
+		.start = INT_ADM0_AARM,
+		.end = (resource_size_t)MSM_DMOV_ADM0_BASE,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+struct resource msm_dmov_resource_adm1[] = {
+	{
+		.start = INT_ADM1_AARM,
+		.end = (resource_size_t)MSM_DMOV_ADM1_BASE,
+		.flags = IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device msm_device_dmov_adm0 = {
+	.name	= "msm_dmov",
+	.id	= 0,
+	.resource = msm_dmov_resource_adm0,
+	.num_resources = ARRAY_SIZE(msm_dmov_resource_adm0),
+};
+
+struct platform_device msm_device_dmov_adm1 = {
+	.name	= "msm_dmov",
+	.id	= 1,
+	.resource = msm_dmov_resource_adm1,
+	.num_resources = ARRAY_SIZE(msm_dmov_resource_adm1),
+};
+
 
 /* MSM Video core device */
 
@@ -1878,10 +1954,10 @@ struct clk_lookup msm_clocks_8x60[] = {
 	CLK_8X60("sdc_pclk",		SDC3_P_CLK, "msm_sdcc.3", OFF),
 	CLK_8X60("sdc_pclk",		SDC4_P_CLK, "msm_sdcc.4", OFF),
 	CLK_8X60("sdc_pclk",		SDC5_P_CLK, "msm_sdcc.5", OFF),
-	CLK_8X60("adm_clk",		ADM0_CLK,		NULL, OFF),
-	CLK_8X60("adm_pclk",		ADM0_P_CLK,		NULL, OFF),
-	CLK_8X60("adm_clk",		ADM1_CLK,		NULL, OFF),
-	CLK_8X60("adm_pclk",		ADM1_P_CLK,		NULL, OFF),
+	CLK_8X60("adm_clk",		ADM0_CLK, "msm_dmov.0", OFF),
+	CLK_8X60("adm_pclk",		ADM0_P_CLK, "msm_dmov.0", OFF),
+	CLK_8X60("adm_clk",		ADM1_CLK, "msm_dmov.1", OFF),
+	CLK_8X60("adm_pclk",		ADM1_P_CLK, "msm_dmov.1", OFF),
 	CLK_8X60("modem_ahb1_pclk",	MODEM_AHB1_P_CLK,	NULL, OFF),
 	CLK_8X60("modem_ahb2_pclk",	MODEM_AHB2_P_CLK,	NULL, OFF),
 	CLK_8X60("pmic_arb_pclk",	PMIC_ARB0_P_CLK,	NULL, OFF),
@@ -1978,6 +2054,12 @@ struct clk_lookup msm_clocks_8x60[] = {
 					"dfab_clk",    "msm_sdcc.4", 0),
 	CLK_VOTER("dfab_sdc_clk",      DFAB_SDC5_CLK,
 					"dfab_clk",    "msm_sdcc.5", 0),
+	CLK_VOTER("ebi1_msmbus_clk",   EBI_MSMBUS_CLK,
+					"ebi1_clk",    NULL, 0),
+	CLK_VOTER("ebi1_adm_clk",     EBI_ADM0_CLK,
+					"ebi1_clk",    "msm_dmov.0", 0),
+	CLK_VOTER("ebi1_adm_clk",     EBI_ADM1_CLK,
+					"ebi1_clk",    "msm_dmov.1", 0),
 };
 
 unsigned msm_num_clocks_8x60 = ARRAY_SIZE(msm_clocks_8x60);

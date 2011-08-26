@@ -83,6 +83,7 @@ static bool g_bGotUsbBus = false;
 static bool g_bNeedSimulateCableOut = false;
 static bool g_bInitCompleted = false;
 
+#define MHL_RCP_KEYEVENT
 
 #ifdef MHL_RCP_KEYEVENT
 struct input_dev *input_dev;
@@ -522,7 +523,7 @@ static int sii9234_probe(struct i2c_client *client,
 //	{
 //		TPI_Poll();
 //	} while ((--timeoutCnt) && (Status_Query() != TX_POWER_STATE_D3));
-	ret = request_irq(pInfo->irq, sii9234_irq_handler, IRQF_TRIGGER_FALLING, "mhl_sii9234_evt", pInfo);
+	ret = request_irq(pInfo->irq, sii9234_irq_handler, IRQF_TRIGGER_LOW, "mhl_sii9234_evt", pInfo);
 	if (ret < 0)
 	{
 		pr_err("%s: request_irq(%d) failed for gpio %d (%d)\n", __func__, pInfo->irq, pInfo->intr_pin, ret);
@@ -567,7 +568,14 @@ static int sii9234_probe(struct i2c_client *client,
 	/* indicate that we generate key events */
 	set_bit(EV_KEY, input_dev->evbit);
 	/* indicate that we generate *any* key event */
-	bitmap_fill(input_dev->keybit, KEY_MAX);
+	set_bit(KEY_BACK, input_dev->keybit);
+	set_bit(KEY_HOME, input_dev->keybit);
+	set_bit(KEY_ENTER, input_dev->keybit);
+	set_bit(KEY_LEFT, input_dev->keybit);
+	set_bit(KEY_UP, input_dev->keybit);
+	set_bit(KEY_DOWN, input_dev->keybit);
+	set_bit(KEY_RIGHT, input_dev->keybit);
+
 	input_dev->name = "rcp_events";
 
 	ret = input_register_device(input_dev);

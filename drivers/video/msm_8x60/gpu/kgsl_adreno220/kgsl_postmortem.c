@@ -31,6 +31,7 @@
 #include "kgsl_yamato.h"
 
 #define INVALID_RB_CMD 0xaaaaaaaa
+#define KGSL_TEST_VERSION "SBA 42"
 
 struct pm_id_name {
 	uint32_t id;
@@ -226,12 +227,59 @@ static void kgsl_yamato_dump_regs(struct kgsl_device *device)
 #endif
 }
 
+static struct kgsl_process_private*  get_current_process(uint32_t pt_base)
+{
+	struct kgsl_pagetable *pt = NULL;
+	struct kgsl_pagetable *current_pt = NULL;
+	struct kgsl_process_private *private = NULL;
+	struct kgsl_process_private *current_private = NULL;
+
+
+	list_for_each_entry(pt, &kgsl_driver.pagetable_list, list) {
+		if (pt->base.gpuaddr == pt_base) {
+			current_pt = pt;
+			break;
+		}
+        }
+
+	if(current_pt == NULL)
+		goto done;
+
+	list_for_each_entry(private, &kgsl_driver.process_list, list) {
+		if (private->pagetable == current_pt) {
+			current_private = private;
+			break;
+		}
+	}
+done:
+	return current_private;
+}
+
 static void dump_ib(struct kgsl_device *device, char* buffId, uint32_t pt_base,
 	uint32_t base_offset, uint32_t ib_base, uint32_t ib_size, bool dump)
 {
 	unsigned int memsize;
+	struct kgsl_mem_entry *entry;
+	struct kgsl_memdesc *memdesc;
+	struct kgsl_process_private *process_priv = NULL;
 	uint8_t *base_addr = kgsl_sharedmem_convertaddr(device, pt_base,
 		ib_base, &memsize);
+
+	process_priv = get_current_process(pt_base);
+
+	if (process_priv) {
+		spin_lock(&process_priv->mem_lock);
+		entry = kgsl_sharedmem_find_region(process_priv,
+					ib_base, ib_size * sizeof(uint));
+		spin_unlock(&process_priv->mem_lock);
+
+		if (entry != NULL) {
+			memdesc = &entry->memdesc;
+			kgsl_cache_range_op((unsigned long)memdesc->physaddr,
+					memdesc->size, KGSL_MEMFLAGS_CACHE_INV |
+					KGSL_MEMFLAGS_VMALLOC_MEM);
+		}
+	}
 
 	if (base_addr && dump)
 		print_hex_dump(KERN_ERR, buffId, DUMP_PREFIX_OFFSET,
@@ -526,8 +574,22 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 	static struct ib_list ib_list;
 
 	struct kgsl_yamato_device *yamato_device = KGSL_YAMATO_DEVICE(device);
+	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
+
+	KGSL_LOG_DUMP("KGSL VERSION %s \n", KGSL_TEST_VERSION);
 
 	mb();
+
+	KGSL_LOG_DUMP("POWER: FLAGS = %08X | ACTIVE POWERLEVEL = %08X",
+			pwr->power_flags, pwr->active_pwrlevel);
+
+	KGSL_LOG_DUMP("POWER: INTERVAL TIMEOUT = %08X ",
+		pwr->interval_timeout);
+
+	KGSL_LOG_DUMP("GRP_CLK = %lu ", kgsl_get_clkrate(pwr->grp_clk));
+
+	KGSL_LOG_DUMP("BUS CLK = %lu ",
+		kgsl_get_clkrate(pwr->ebi1_clk));
 
 	kgsl_regread(device, REG_RBBM_STATUS, &rbbm_status);
 	kgsl_regread(device, REG_RBBM_PM_OVERRIDE1, &r2);
@@ -824,7 +886,7 @@ int kgsl_postmortem_dump(struct kgsl_device *device)
 	KGSL_DRV_FATAL("Dump Finished\n");
 
 	//sleep for keep log
-	hr_msleep(200);
+	hr_msleep(5000);
 
 	/* aleays bug on */
 	BUG_ON(true);

@@ -83,6 +83,7 @@ obj-$(CONFIG_USB_ANDROID_PROJECTOR)	+= f_projector.o
 obj-$(CONFIG_USB_ANDROID_MTP)	+= f_mtp.o
 obj-$(CONFIG_USB_ANDROID_MTP36)	+= f_mtp36.o
 obj-$(CONFIG_USB_ANDROID_ECM)	+= f_ecm.o u_ether.o
+obj-$(CONFIG_USB_ANDROID_ACCESSORY)	+= f_accessory.o
 
 # MSM specific
 obj-$(CONFIG_USB_ANDROID_QCT_DIAG)	+= diag.o

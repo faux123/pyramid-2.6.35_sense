@@ -54,6 +54,8 @@ struct pcm {
 	atomic_t in_stopped;
 };
 
+static atomic_t pcm_opened = ATOMIC_INIT(0);
+
 static void pcm_in_get_dsp_buffers(struct pcm*,
 				uint32_t token, uint32_t *payload);
 
@@ -271,6 +273,11 @@ static int pcm_in_open(struct inode *inode, struct file *file)
 	struct timespec ts;
 	struct rtc_time tm;
 
+	if (atomic_cmpxchg(&pcm_opened, 0, 1) != 0) {
+		rc = -EBUSY;
+		return rc;
+	}
+
 	pcm = kzalloc(sizeof(struct pcm), GFP_KERNEL);
 	if (!pcm)
 		return -ENOMEM;
@@ -317,6 +324,7 @@ fail:
 	if (pcm->ac)
 		q6asm_audio_client_free(pcm->ac);
 	kfree(pcm);
+	atomic_set(&pcm_opened, 0);
 	return rc;
 }
 
@@ -413,6 +421,7 @@ static int pcm_in_release(struct inode *inode, struct file *file)
 	kfree(pcm);
 	getnstimeofday(&ts);
 	rtc_time_to_tm(ts.tv_sec, &tm);
+	atomic_set(&pcm_opened, 0);
 	pr_aud_info1("[ATS][stop_recording][successful] at %lld \
 		(%d-%02d-%02d %02d:%02d:%02d.%09lu UTC)\n",
 		ktime_to_ns(ktime_get()),

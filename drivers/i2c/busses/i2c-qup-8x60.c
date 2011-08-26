@@ -258,8 +258,11 @@ qup_i2c_interrupt(int irq, void *devid)
 	spin_lock(&dev->lock);
 	if (!dev->msg || !dev->complete) {
 		/* Clear Error interrupt if it's a level triggered interrupt*/
-		if (dev->num_irqs == 1)
+		if (dev->num_irqs == 1) {
 			writel(QUP_RESET_STATE, dev->base+QUP_STATE);
+			/* Ensure that state is written before ISR exits */
+			dsb();
+		}
 		spin_unlock(&dev->lock);
 		return IRQ_HANDLED;
 	}
@@ -269,8 +272,11 @@ qup_i2c_interrupt(int irq, void *devid)
 			status, irq);
 		err = status;
 		/* Clear Error interrupt if it's a level triggered interrupt*/
-		if (dev->num_irqs == 1)
+		if (dev->num_irqs == 1) {
 			writel(QUP_RESET_STATE, dev->base+QUP_STATE);
+			/* Ensure that state is written before ISR exits */
+			dsb();
+		}
 		goto intr_done;
 	}
 
@@ -278,9 +284,14 @@ qup_i2c_interrupt(int irq, void *devid)
 		dev_err(dev->dev, "[QUP I2C Err] QUP: QUP status flags :0x%x\n", status1);
 		err = -status1;
 		/* Clear Error interrupt if it's a level triggered interrupt*/
-		if (dev->num_irqs == 1)
+		if (dev->num_irqs == 1) {
 			writel((status1 & QUP_STATUS_ERROR_FLAGS),
-				dev->base + QUP_ERROR_FLAGS);
+					dev->base + QUP_ERROR_FLAGS);
+			/* Ensure that error flags are cleared before ISR
+			 * exits
+			 */
+			dsb();
+		}
 		goto intr_done;
 	}
 
@@ -289,13 +300,20 @@ qup_i2c_interrupt(int irq, void *devid)
 		spin_unlock(&dev->lock);
 		return IRQ_HANDLED;
 	}
-	if (op_flgs & QUP_OUT_SVC_FLAG)
+	if (op_flgs & QUP_OUT_SVC_FLAG) {
 		writel(QUP_OUT_SVC_FLAG, dev->base + QUP_OPERATIONAL);
+		/* Ensure that service flag is acknowledged before ISR exits */
+		dsb();
+	}
 	if (dev->msg->flags == I2C_M_RD) {
 		if ((op_flgs & QUP_MX_INPUT_DONE) ||
-			(op_flgs & QUP_IN_SVC_FLAG))
+			(op_flgs & QUP_IN_SVC_FLAG)) {
 			writel(QUP_IN_SVC_FLAG, dev->base + QUP_OPERATIONAL);
-		else {
+			/* Ensure that service flag is acknowledged before ISR
+			 * exits
+			 */
+			dsb();
+		} else {
 			spin_unlock(&dev->lock);
 			return IRQ_HANDLED;
 		}
@@ -770,8 +788,16 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 		int hs_div;
 		uint32_t fifo_reg;
 
-		if (dev->gsbi)
+		if (dev->gsbi) {
 			writel(0x2 << 4, dev->gsbi);
+			/* GSBI memory is not in the same 1K region as other
+			 * QUP registers. dsb() here ensures that the GSBI
+			 * register is updated in correct order and that the
+			 * write has gone through before programming QUP core
+			 * registers
+			 */
+			dsb();
+		}
 
 		fs_div = ((dev->pdata->src_clk_rate
 				/ dev->pdata->clk_freq) / 2) - 3;
@@ -863,6 +889,11 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 
 		qup_print_status(dev);
 		writel(dev->clk_ctl, dev->base + QUP_I2C_CLK_CTL);
+		/* CLK_CTL register is not in the same 1K region as other QUP
+		 * registers. Ensure that clock control is written before
+		 * programming other QUP registers
+		 */
+		dsb();
 
 		do {
 			int idx = 0;
@@ -943,6 +974,10 @@ qup_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[], int num)
 				enable_irq(dev->err_irq);
 
 				writel(1, dev->base + QUP_SW_RESET);
+				/* Make sure that the write has gone through
+				 * before returning from the function
+				 */
+				dsb();
 				ret = -ETIMEDOUT;
 				goto out_err;
 			}

@@ -78,23 +78,6 @@ static struct notifier_block panic_blk = {
 	.notifier_call	= panic_prep_restart,
 };
 
-#ifdef CONFIG_MSM_DLOAD_MODE
-static void set_qct_dload_mode(int on)
-{
-	void *dload_mode_addr;
-
-	dload_mode_addr = MSM_IMEM_BASE;
-
-	if (dload_mode_addr) {
-		writel(on ? 0xE47B337D : 0, dload_mode_addr);
-		writel(on ? 0xCE14091A : 0,
-		       dload_mode_addr + sizeof(unsigned int));
-	}
-}
-#else
-#define set_qct_dload_mode(x) do {} while (0)
-#endif
-
 void msm_set_restart_mode(int mode)
 {
 	restart_mode = mode;
@@ -156,6 +139,7 @@ static void msm_power_off(void)
 	writel(32768 * 12, WDT0_BARK_TIME);
 	writel(32768 * 12, WDT0_BITE_TIME);
 	writel(3, WDT0_EN);
+	dsb();
 	wait_rmt_final_call_back(10);
 	/* Rest watchdog timer to make sure we have enough time to power off */
 	writel(1, WDT0_RST);
@@ -240,10 +224,6 @@ void arch_reset(char mode, const char *cmd)
 			code = 0x99;
 
 		set_restart_reason(RESTART_REASON_OEM_BASE | code);
-
-		/* FIXME: Security concern, sbl3 DLOAD is NOT allowed on ship build */
-		if(code == 0xdd) //reboot oem-dd, boot to dload mode
-			set_qct_dload_mode(1);
 	} else if (!strcmp(cmd, "force-hard") ||
 			(RESTART_MODE_LEGECY < mode && mode < RESTART_MODE_MAX)
 		) {
@@ -275,6 +255,7 @@ void arch_reset(char mode, const char *cmd)
 		writel(32768 * 12, WDT0_BARK_TIME);
 		writel(32768 * 13, WDT0_BITE_TIME);
 		writel(3, WDT0_EN);
+		dsb();
 		if (in_panic) {
 			rmt_storage_set_msm_client_status(0);
 			smsm_change_state(SMSM_APPS_STATE, SMSM_APPS_REBOOT, SMSM_APPS_REBOOT);
@@ -328,7 +309,7 @@ void arch_reset(char mode, const char *cmd)
 	writel(0x31F3, WDT0_BARK_TIME);
 	writel(0x31F3, WDT0_BITE_TIME);
 	writel(3, WDT0_EN);
-	dmb();
+	dsb();
 	secure_writel(3, MSM_TCSR_BASE + TCSR_WDT_CFG);
 
 	mdelay(10000);

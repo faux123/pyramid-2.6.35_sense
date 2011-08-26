@@ -651,10 +651,16 @@ kgsl_ringbuffer_addcmds(struct kgsl_ringbuffer *rb,
 	*/
 	total_sizedwords += flags & KGSL_CMD_FLAGS_PMODE ? 4 : 0;
 	total_sizedwords += !(flags & KGSL_CMD_FLAGS_NO_TS_CMP) ? 7 : 0;
+	total_sizedwords += (flags & KGSL_CMD_FLAGS_CONTEXT_CHANGE) ? 2 : 0;
 
 	ringcmds = kgsl_ringbuffer_allocspace(rb, total_sizedwords);
 	rcmd_gpu = rb->buffer_desc.gpuaddr
 		+ sizeof(uint)*(rb->wptr-total_sizedwords);
+
+	if (flags & KGSL_CMD_FLAGS_CONTEXT_CHANGE) {
+		GSL_RB_WRITE(ringcmds, rcmd_gpu, pm4_nop_packet(1));
+		GSL_RB_WRITE(ringcmds, rcmd_gpu, KGSL_CMD_CTXT_IDENTIFIER);
+	}
 
 	if (flags & KGSL_CMD_FLAGS_PMODE) {
 		/* disable protected mode error checking */
