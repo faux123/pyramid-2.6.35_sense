@@ -50,7 +50,11 @@
 #define KGSL_FLAGS_RESERVED2   0x00000080
 #define KGSL_FLAGS_SOFT_RESET  0x00000100
 
+#ifdef CONFIG_GPU_TURBO_BOOST
+#define KGSL_MAX_PWRLEVELS 6
+#else
 #define KGSL_MAX_PWRLEVELS 5
+#endif	/* GPU_TURBO_BOOST */
 
 /* device id */
 enum kgsl_deviceid {
