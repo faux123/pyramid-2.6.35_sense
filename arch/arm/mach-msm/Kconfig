@@ -1351,6 +1351,10 @@ config GPU_TURBO_BOOST
 	bool "Enable GPU Turbo mode from 266MHz to 320MHz"
 	default n
 
+config CPU_VOLTAGE_TABLE
+	bool "Enable CPU Voltage Table via sysfs for adjustements"
+	default n
+
 if CPU_FREQ_MSM
 
 config MSM_CPU_FREQ_SET_MIN_MAX
