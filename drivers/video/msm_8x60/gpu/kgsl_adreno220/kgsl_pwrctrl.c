@@ -32,7 +32,7 @@
 #define UPDATE_BUSY_VAL	1000000
 #define UPDATE_BUSY		50
 
-#undef CONFIG_MSM_SECURE_IO
+//#undef CONFIG_MSM_SECURE_IO
 #ifdef CONFIG_MSM_SECURE_IO
 /* Trap into the TrustZone, and call funcs there. */
 static int __secure_tz_entry(u32 cmd, u32 val)
