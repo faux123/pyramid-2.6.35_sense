@@ -2001,6 +2001,7 @@ int mdp4_overlay_unset(struct fb_info *info, int ndx)
 		else if (ctrl->panel_mode & MDP4_PANEL_LCDC) {
 			flags = pipe->flags;
 			pipe->flags &= ~MDP_OV_PLAY_NOWAIT;
+			mdp4_overlay_reg_flush(pipe, 1);
 			mdp4_overlay_lcdc_vsync_push(mfd, pipe);
 			pipe->flags = flags;
 		}
