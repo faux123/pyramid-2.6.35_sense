@@ -29,6 +29,8 @@
 #ifndef _KGSL_G12_H
 #define _KGSL_G12_H
 
+#include <linux/earlysuspend.h>
+
 #define IDX_2D(X) ((X)-KGSL_DEVICE_2D0)
 
 struct kgsl_g12_ringbuffer {
@@ -46,6 +48,7 @@ struct kgsl_g12_device {
 	wait_queue_head_t wait_timestamp_wq;
 	struct kgsl_g12_ringbuffer ringbuffer;
 	spinlock_t cmdwin_lock;
+	struct early_suspend display_off;
 };
 
 irqreturn_t kgsl_g12_isr(int irq, void *data);

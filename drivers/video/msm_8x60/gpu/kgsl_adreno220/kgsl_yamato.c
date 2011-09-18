@@ -96,6 +96,13 @@ static struct kgsl_yamato_device yamato_device = {
 		.mutex = __MUTEX_INITIALIZER(yamato_device.dev.mutex),
 		.state = KGSL_STATE_INIT,
 		.active_cnt = 0,
+		.display_off = {
+#ifdef CONFIG_HAS_EARLYSUSPEND
+			.level = EARLY_SUSPEND_LEVEL_STOP_DRAWING,
+			.suspend = kgsl_early_suspend_driver,
+			.resume = kgsl_late_resume_driver,
+#endif
+		},
 	},
 	.gmemspace = {
 		.gpu_base = 0,
@@ -534,7 +541,7 @@ kgsl_yamato_init_pwrctrl(struct kgsl_device *device)
 	/* Do not set_rate for targets in sync with AXI */
 	if (pdata->pwrlevel_3d[0].gpu_freq > 0)
 		clk_set_rate(clk, device->pwrctrl.
-			pwrlevels[KGSL_DEFAULT_PWRLEVEL].gpu_freq);
+			pwrlevels[KGSL_PWRLEVEL_TURBO].gpu_freq);
 
 	if (pdata->imem_clk_name != NULL) {
 		clk = clk_get(&pdev->dev, pdata->imem_clk_name);
@@ -612,6 +619,7 @@ kgsl_yamato_init_pwrctrl(struct kgsl_device *device)
 		goto done;
 	}
 
+	register_early_suspend(&device->display_off);
 done:
 	return result;
 }

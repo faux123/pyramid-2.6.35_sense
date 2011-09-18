@@ -263,6 +263,7 @@ static int kgsl_suspend(struct platform_device *dev, pm_message_t state)
 	int i;
 	struct kgsl_device *device;
 	unsigned int nap_allowed_saved;
+       unsigned int idle_pass_saved;
 
 	KGSL_PWR_INFO("suspend start\n");
 
@@ -274,6 +275,8 @@ static int kgsl_suspend(struct platform_device *dev, pm_message_t state)
 		mutex_lock(&device->mutex);
 		nap_allowed_saved = device->pwrctrl.nap_allowed;
 		device->pwrctrl.nap_allowed = false;
+		idle_pass_saved = device->pwrctrl.idle_pass;
+		device->pwrctrl.idle_pass = false;
 		device->requested_state = KGSL_STATE_SUSPEND;
 		/* Make sure no user process is waiting for a timestamp *
 		 * before supending */
@@ -308,6 +311,7 @@ static int kgsl_suspend(struct platform_device *dev, pm_message_t state)
 		device->state = KGSL_STATE_SUSPEND;
 		device->requested_state = KGSL_STATE_NONE;
 		device->pwrctrl.nap_allowed = nap_allowed_saved;
+		device->pwrctrl.idle_pass = idle_pass_saved;
 
 		mutex_unlock(&device->mutex);
 	}
@@ -331,6 +335,7 @@ static int kgsl_resume(struct platform_device *dev)
 		mutex_lock(&device->mutex);
 		if (device->state == KGSL_STATE_SUSPEND) {
 			device->requested_state = KGSL_STATE_ACTIVE;
+			kgsl_pwrctrl_pwrlevel_change(device, KGSL_PWRLEVEL_NOMINAL);
 			status = device->ftbl.device_start(device, 0);
 			if (status == KGSL_SUCCESS) {
 				device->state = KGSL_STATE_ACTIVE;
@@ -352,6 +357,22 @@ static int kgsl_resume(struct platform_device *dev)
 	KGSL_PWR_INFO("resume end\n");
 	return status;
 }
+
+void kgsl_early_suspend_driver(struct early_suspend *h)
+{
+       struct kgsl_device *device = container_of(h,
+                                       struct kgsl_device, display_off);
+       kgsl_pwrctrl_pwrlevel_change(device, KGSL_PWRLEVEL_NOMINAL);
+}
+EXPORT_SYMBOL(kgsl_early_suspend_driver);
+ 
+void kgsl_late_resume_driver(struct early_suspend *h)
+{
+       struct kgsl_device *device = container_of(h,
+                                       struct kgsl_device, display_off);
+       kgsl_pwrctrl_pwrlevel_change(device, KGSL_PWRLEVEL_TURBO);
+}
+EXPORT_SYMBOL(kgsl_late_resume_driver);
 
 /* file operations */
 static struct kgsl_process_private *
