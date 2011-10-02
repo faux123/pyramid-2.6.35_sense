@@ -2124,6 +2124,8 @@ static struct platform_device *early_devices[] __initdata = {
 	&msm_bus_sys_fpb,
 	&msm_bus_cpss_fpb,
 #endif
+	&msm_device_dmov_adm0,
+	&msm_device_dmov_adm1,
 #ifdef CONFIG_ARCH_MSM_FLASHLIGHT
 	&flashlight_device,
 #endif
@@ -2501,8 +2503,6 @@ static struct platform_device scm_log_device = {
 static struct platform_device *surf_devices[] __initdata = {
 	&ram_console_device,
 	&msm_device_smd,
-	&msm_device_dmov_adm0,
-	&msm_device_dmov_adm1,
 	&msm_device_uart_dm12,
 #ifdef CONFIG_I2C_QUP
 	&msm_gsbi4_qup_i2c_device,
