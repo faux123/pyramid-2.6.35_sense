@@ -91,3 +91,14 @@ obj-$(CONFIG_CRYPTO_GHASH) += ghash-generic.o
 #
 obj-$(CONFIG_XOR_BLOCKS) += xor.o
 obj-$(CONFIG_ASYNC_CORE) += async_tx/
+
+hostprogs-y	:= gen_crc32ctable
+clean-files	:= crc32ctable.h
+
+$(obj)/crc32c.o: $(obj)/crc32c_table.h
+
+quiet_cmd_crc32c = GEN     $@
+      cmd_crc32c = $< > $@
+
+$(obj)/crc32c_table.h: $(obj)/gen_crc32ctable
+	$(call cmd,crc32c)
