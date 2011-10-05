@@ -34,4 +34,8 @@ drivers/video/backlight/lcd.ko
 drivers/video/backlight/lcd.mod.c
 lib/lib.a
 vmlinux
+arch/arm/boot/compressed/ashldi3.S
+arch/arm/boot/compressed/piggy.xzkern
+crypto/crc32c_table.h
+crypto/gen_crc32ctable
 
