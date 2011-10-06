@@ -309,42 +309,6 @@ config CRYPTO_CRC32C
 	  by iSCSI for header and data digests and by others.
 	  See Castagnoli93.  Module will be crc32c.
 
-if CRYPTO_CRC32C
-choice
-	prompt "CRC32C variant"
-	default CRC32C_SLICEBY8
-
-config CRC32C_SLICEBY8
-	bool "Slice by 8 bytes"
-	---help---
-	  Calculate checksum 8 bytes at a time with a clever slicing algorithm.
-	  This is the fastest algorithm, but comes with a 8KiB lookup table.
-	  Most modern processors have sufficient cache that this shouldn't be
-	  a huge problem.
-
-	  If you don't know which to choose, choose this one.
-
-config CRC32C_SLICEBY4
-	bool "Slice by 4 bytes"
-	---help---
-	  Calculate checksum 8 bytes at a time with a clever slicing algorithm.
-	  This is reasonably fast, but has a 4KiB lookup table.
-
-config CRC32C_SARWATE
-	bool "Sarwate's Algorithm (one byte at a time)"
-	---help---
-	  Calculate checksum a byte at a time using Sarwate's algorithm.  This
-	  is not very fast, but has a svelte 256 byte lookup table.
-
-config CRC32C_BIT
-	bool "Classic Algorithm (one bit at a time)"
-	---help---
-	  Calculate checksum one bit at a time.  This is VERY slow, but has
-	  no lookup table.  This is provided as a debugging option.
-
-endchoice
-endif
-
 config CRYPTO_CRC32C_INTEL
 	tristate "CRC32c INTEL hardware acceleration"
 	depends on X86
