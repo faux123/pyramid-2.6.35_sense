@@ -60,7 +60,7 @@
 #endif
 
 #define MAX_VDD_SC		1350000 /* uV */
-#define MIN_VDD_SC		 812500 /* uV */
+#define MIN_VDD_SC		 800000 /* uV */
 #define MAX_AXI			 310500 /* KHz */
 #define SCPLL_LOW_VDD_FMAX	 594000 /* KHz */
 #define SCPLL_LOW_VDD		1000000 /* uV */
