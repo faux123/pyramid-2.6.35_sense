@@ -794,7 +794,7 @@ static int kgsl_yamato_start(struct kgsl_device *device, unsigned int init_ram)
 	int status = -EINVAL;
 	struct kgsl_yamato_device *yamato_device = KGSL_YAMATO_DEVICE(device);
 	int init_reftimestamp = 0x7fffffff;
-	//unsigned int override1, override2, i;
+	unsigned int override1, override2, i;
 
 	KGSL_DRV_VDBG("enter (device=%p)\n", device);
 
@@ -860,7 +860,7 @@ static int kgsl_yamato_start(struct kgsl_device *device, unsigned int init_ram)
 	kgsl_yamato_regwrite(device, REG_SQ_VS_PROGRAM, 0x00000000);
 	kgsl_yamato_regwrite(device, REG_SQ_PS_PROGRAM, 0x00000000);
 
-#if 0
+
 	kgsl_yamato_regwrite(device, REG_RBBM_PM_OVERRIDE1, 0);
 	if (device->chip_id != KGSL_CHIPID_LEIA_REV470)
 		kgsl_yamato_regwrite(device, REG_RBBM_PM_OVERRIDE2, 0);
@@ -879,7 +879,6 @@ static int kgsl_yamato_start(struct kgsl_device *device, unsigned int init_ram)
 			i--;
 		}
         }
-#endif
 
 	kgsl_sharedmem_set(&device->memstore, 0, 0,
 			   device->memstore.size);
