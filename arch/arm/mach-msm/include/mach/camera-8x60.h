@@ -486,9 +486,6 @@ enum msm_bus_perf_setting {
 	S_PREVIEW,
 	S_VIDEO,
 	S_CAPTURE,
-#ifdef CONFIG_CAMERA_ZSL
-	S_ZSL,
-#endif
 	S_DEFAULT,
 	S_EXIT
 };

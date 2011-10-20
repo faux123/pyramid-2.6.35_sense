@@ -245,47 +245,6 @@ static struct msm_bus_vectors cam_snapshot_vectors[] = {
 	},
 };
 
-#ifdef CONFIG_CAMERA_ZSL
-static struct msm_bus_vectors cam_zsl_vectors[] = {
-	{
-		.src = MSM_BUS_MASTER_VFE,
-		.dst = MSM_BUS_SLAVE_SMI,
-		.ab  = 566231040,
-		.ib  = 905969664,
-	},
-	{
-		.src = MSM_BUS_MASTER_VFE,
-		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab  = 706199040,
-		.ib  = 1129918464,
-	},
-	{
-		.src = MSM_BUS_MASTER_VPE,
-		.dst = MSM_BUS_SLAVE_SMI,
-		.ab  = 0,
-		.ib  = 0,
-	},
-	{
-		.src = MSM_BUS_MASTER_VPE,
-		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab  = 0,
-		.ib  = 0,
-	},
-	{
-		.src = MSM_BUS_MASTER_JPEG_ENC,
-		.dst = MSM_BUS_SLAVE_SMI,
-		.ab  = 320864256,
-		.ib  = 513382810,
-	},
-	{
-		.src = MSM_BUS_MASTER_JPEG_ENC,
-		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab  = 320864256,
-		.ib  = 513382810,
-	},
-};
-#endif
-
 static struct msm_bus_paths cam_bus_client_config[] = {
 	{
 		ARRAY_SIZE(cam_init_vectors),
@@ -303,12 +262,6 @@ static struct msm_bus_paths cam_bus_client_config[] = {
 		ARRAY_SIZE(cam_snapshot_vectors),
 		cam_snapshot_vectors,
 	},
-#ifdef CONFIG_CAMERA_ZSL
-	{
-		ARRAY_SIZE(cam_zsl_vectors),
-		cam_zsl_vectors,
-	},
-#endif
 };
 
 static struct msm_bus_scale_pdata cam_bus_client_pdata = {
@@ -1156,16 +1109,6 @@ void msm_camio_set_perf_lvl(enum msm_bus_perf_setting perf_setting)
 		} else
 			pr_err("%s: Bus Client NOT Registered!!!\n", __func__);
 		break;
-#ifdef CONFIG_CAMERA_ZSL
-	case S_ZSL:
-		if (bus_perf_client) {
-			rc = msm_bus_scale_client_update_request(
-				bus_perf_client, 4);
-			CDBG("%s: S_ZSL rc = %d\n", __func__, rc);
-		} else
-			pr_err("%s: Bus Client NOT Registered!!!\n", __func__);
-		break;
-#endif
 	case S_DEFAULT:
 		break;
 	default:
