@@ -89,6 +89,7 @@ struct kgsl_pwrctrl {
 	unsigned int no_switch_cnt;
 	unsigned int idle_pass;
 	struct kgsl_busy busy;
+	unsigned int restore_slumber;
 };
 
 int kgsl_pwrctrl_clk(struct kgsl_device *device, unsigned int pwrflag);

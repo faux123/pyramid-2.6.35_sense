@@ -302,6 +302,12 @@ static int kgsl_suspend(struct platform_device *dev, pm_message_t state)
 			KGSL_PWR_INFO("state -> SUSPEND, device %d\n",
 				device->id);
 			break;
+		case KGSL_STATE_SLUMBER:
+			INIT_COMPLETION(device->hwaccess_gate);
+			device->state = KGSL_STATE_SUSPEND;
+			KGSL_PWR_INFO("state -> SUSPEND, device %d\n",
+				device->id);
+			break;
 		default:
 			KGSL_PWR_ERR("suspend fail, device %d\n",
 					device->id);
@@ -334,21 +340,11 @@ static int kgsl_resume(struct platform_device *dev)
 
 		mutex_lock(&device->mutex);
 		if (device->state == KGSL_STATE_SUSPEND) {
-			device->requested_state = KGSL_STATE_ACTIVE;
-			kgsl_pwrctrl_pwrlevel_change(device, KGSL_PWRLEVEL_NOMINAL);
-			status = device->ftbl.device_start(device, 0);
-			if (status == KGSL_SUCCESS) {
-				device->state = KGSL_STATE_ACTIVE;
-				KGSL_PWR_WARN("state -> ACTIVE, device %d\n",
-							 device->id);
-			} else {
-				KGSL_PWR_ERR("resume failed, device %d\n",
+
+			device->state = KGSL_STATE_SLUMBER;
+			status = 0;
+			KGSL_PWR_INFO("state -> SLUMBER, device %d\n",
 					device->id);
-				device->state = KGSL_STATE_INIT;
-				mutex_unlock(&device->mutex);
-				return status;
-			}
-			status = device->ftbl.device_resume_context(device);
 			complete_all(&device->hwaccess_gate);
 		}
 		device->requested_state = KGSL_STATE_NONE;
@@ -360,21 +356,30 @@ static int kgsl_resume(struct platform_device *dev)
 
 void kgsl_early_suspend_driver(struct early_suspend *h)
 {
-       struct kgsl_device *device = container_of(h,
-                                       struct kgsl_device, display_off);
+	struct kgsl_device *device = container_of(h,
+					struct kgsl_device, display_off);
+
+	KGSL_PWR_INFO("early suspend start\n");
 	mutex_lock(&device->mutex);
-	kgsl_pwrctrl_pwrlevel_change(device, KGSL_PWRLEVEL_NOMINAL);
+	device->requested_state = KGSL_STATE_SLUMBER;
+	kgsl_pwrctrl_sleep(device);
 	mutex_unlock(&device->mutex);
+	KGSL_PWR_INFO("early suspend end\n");
 }
 EXPORT_SYMBOL(kgsl_early_suspend_driver);
  
 void kgsl_late_resume_driver(struct early_suspend *h)
 {
-       struct kgsl_device *device = container_of(h,
-                                       struct kgsl_device, display_off);
+	struct kgsl_device *device = container_of(h,
+					struct kgsl_device, display_off);
+
+	KGSL_PWR_INFO("late resume start\n");
 	mutex_lock(&device->mutex);
-	kgsl_pwrctrl_pwrlevel_change(device, KGSL_PWRLEVEL_TURBO);
+	kgsl_pwrctrl_wake(device);
+	device->pwrctrl.restore_slumber = 0;
 	mutex_unlock(&device->mutex);
+	kgsl_check_idle(device);
+	KGSL_PWR_INFO("late resume end\n");
 }
 EXPORT_SYMBOL(kgsl_late_resume_driver);
 
