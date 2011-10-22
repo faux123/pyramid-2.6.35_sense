@@ -481,8 +481,10 @@ int kgsl_pwrctrl_axi(struct kgsl_device *device, unsigned int pwrflag)
 	case KGSL_PWRFLAGS_AXI_OFF:
 		if (pwr->power_flags & KGSL_PWRFLAGS_AXI_ON) {
 			KGSL_PWR_DBG("axi off, device %d\n", device->id);
-			if (pwr->ebi1_clk)
+			if (pwr->ebi1_clk) {
+				clk_set_rate(pwr->ebi1_clk, 0);
 				clk_disable(pwr->ebi1_clk);
+			}
 			if (pwr->pcl)
 				msm_bus_scale_client_update_request(pwr->pcl,
 								    0);
@@ -494,8 +496,12 @@ int kgsl_pwrctrl_axi(struct kgsl_device *device, unsigned int pwrflag)
 	case KGSL_PWRFLAGS_AXI_ON:
 		if (pwr->power_flags & KGSL_PWRFLAGS_AXI_OFF) {
 			KGSL_PWR_DBG("axi on, device %d\n", device->id);
-			if (pwr->ebi1_clk)
+			if (pwr->ebi1_clk) {
 				clk_enable(pwr->ebi1_clk);
+				clk_set_rate(pwr->ebi1_clk,
+					pwr->pwrlevels[pwr->active_pwrlevel].
+					bus_freq);
+			}
 			if (pwr->pcl)
 				msm_bus_scale_client_update_request(pwr->pcl,
 					pwr->pwrlevels[pwr->active_pwrlevel].
