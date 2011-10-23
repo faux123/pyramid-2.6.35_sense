@@ -314,7 +314,6 @@ static int kgsl_suspend(struct platform_device *dev, pm_message_t state)
 			mutex_unlock(&device->mutex);
 			return KGSL_FAILURE;
 		}
-		device->state = KGSL_STATE_SUSPEND;
 		device->requested_state = KGSL_STATE_NONE;
 		device->pwrctrl.nap_allowed = nap_allowed_saved;
 		device->pwrctrl.idle_pass = idle_pass_saved;
