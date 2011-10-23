@@ -185,9 +185,15 @@ static struct vfe31_cmd_type vfe31_cmd[] = {
 		{V31_DUMMY_10},
 		{V31_SYNC_TIMER_SETTING, V31_SYNC_TIMER_LEN,
 			V31_SYNC_TIMER_OFF},
+#ifdef CONFIG_CAMERA_ZSL
+/*105*/	{V31_ASYNC_TIMER_SETTING, V31_ASYNC_TIMER_LEN, V31_ASYNC_TIMER_OFF},
+		{V31_LIVESHOT},
+		{V31_ZSL, V31_CAPTURE_LEN, 0xFF},
+#else
 /*105*/	{V31_ASYNC_TIMER_SETTING, V31_ASYNC_TIMER_LEN, V31_ASYNC_TIMER_OFF},
 		{V31_LIVESHOT},
 		{V31_STEREOCAM},
+#endif
 };
 
 #ifdef CONFIG_MSM_CAMERA_DEBUG
@@ -299,7 +305,11 @@ static const char *vfe31_general_cmd[] = {
 	"SYNC_TIMER_SETTING",
 	"ASYNC_TIMER_SETTING",  /* 105 */
 	"LIVESHOT",
+#ifdef CONFIG_CAMERA_ZSL
+	"V31_ZSL"
+#else
 	"V31_STEREOCAM"
+#endif
 };
 #endif
 
@@ -493,9 +503,14 @@ static void vfe_send_outmsg(uint8_t msgid, uint32_t pyaddr,
 {
 	struct vfe_message msg;
 	uint8_t outid;
+#ifndef CONFIG_CAMERA_ZSL
 	struct msm_sync *p_sync = (struct msm_sync *)vfe_syncdata;
+#endif
 
 	msg._d = msgid;   /* now the output mode is redundnat. */
+#ifdef CONFIG_CAMERA_ZSL	
+	msg._u.msgOut.frameCounter = vfe31_ctrl->vfeFrameId;
+#endif
 
 	switch (msgid) {
 	case MSG_ID_OUTPUT_P:
@@ -518,6 +533,7 @@ static void vfe_send_outmsg(uint8_t msgid, uint32_t pyaddr,
 	msg._u.msgOut.yBuffer     = pyaddr;
 	msg._u.msgOut.cbcrBuffer  = pcbcraddr;
 
+#ifndef CONFIG_CAMERA_ZSL
 	if (p_sync->stereocam_enabled
 		&& (strcmp(vfe31_ctrl->s_info->sensor_name,"sp3d") == 0)) {
 		if (msgid == MSG_ID_OUTPUT_T) {
@@ -544,7 +560,7 @@ static void vfe_send_outmsg(uint8_t msgid, uint32_t pyaddr,
 			}
 		}
 	}
-
+#endif
 	vfe31_proc_ops(msgid, &msg, sizeof(struct vfe_message));
 	return;
 }
@@ -631,14 +647,25 @@ static int vfe31_disable(struct camera_enable_cmd *enable,
 static int vfe31_config_axi(int mode, struct axidata *ad, uint32_t *ao)
 {
 	int i;
+#ifdef CONFIG_CAMERA_ZSL
+	uint32_t *p, *p1, *p2, *p3;
+	struct vfe31_output_ch *outp1, *outp2, *outp3;
+#else
 	uint32_t *p, *p1, *p2;
 	struct vfe31_output_ch *outp1, *outp2;
+#endif
 	struct msm_pmem_region *regp1 = NULL;
 	struct msm_pmem_region *regp2 = NULL;
+#ifdef CONFIG_CAMERA_ZSL
+	struct msm_pmem_region *regp3 = NULL;
+#endif
 	struct msm_sync *p_sync = (struct msm_sync *)vfe_syncdata;
 
 	outp1 = NULL;
 	outp2 = NULL;
+#ifdef CONFIG_CAMERA_ZSL
+	outp3 = NULL;
+#endif
 
 	p = ao + 2;
 
@@ -828,6 +855,84 @@ static int vfe31_config_axi(int mode, struct axidata *ad, uint32_t *ao)
 		}
 		break;
 
+#ifdef CONFIG_CAMERA_ZSL
+	case OUTPUT_1_2_AND_3:
+		CDBG("%s: OUTPUT_1_2_AND_3", __func__);
+		CDBG("%s: %d %d %d", __func__, ad->bufnum1, ad->bufnum2,
+			ad->bufnum3);
+		/* use wm0& 4 for postview, wm1&5 for preview.*/
+		/* use wm2& 6 for main img */
+		if ((ad->bufnum1 < 1) || (ad->bufnum2 < 1) || (ad->bufnum3 < 1))
+			return -EINVAL;
+		/* at least one frame for snapshot.  */
+		vfe31_ctrl->outpath.out0.ch0 = 0; /* preview luma   */
+		vfe31_ctrl->outpath.out0.ch1 = 4; /* preview chroma */
+		vfe31_ctrl->outpath.out1.ch0 = 1; /* thumbnail luma   */
+		vfe31_ctrl->outpath.out1.ch1 = 5; /* thumbnail chroma */
+		vfe31_ctrl->outpath.out2.ch0 = 2; /* main image luma   */
+		vfe31_ctrl->outpath.out2.ch1 = 6; /* main image chroma */
+		vfe31_ctrl->outpath.output_mode |=
+			VFE31_OUTPUT_MODE_S;  /* main image.*/
+		vfe31_ctrl->outpath.output_mode |=
+			VFE31_OUTPUT_MODE_P;  /* preview. */
+		vfe31_ctrl->outpath.output_mode |=
+			VFE31_OUTPUT_MODE_T;  /* thumbnail. */
+
+		/* this is preview buffer. */
+		regp1 = &(ad->region[0]);
+		/* this is thumbnail buffer. */
+		regp2 = &(ad->region[ad->bufnum1]);
+		/* this is main image buffer. */
+		regp3 = &(ad->region[ad->bufnum1+ad->bufnum2]);
+		outp1 = &(vfe31_ctrl->outpath.out0);
+		outp2 = &(vfe31_ctrl->outpath.out1);
+		outp3 = &(vfe31_ctrl->outpath.out2);
+
+		/*  Parse the buffers!!! */
+		/* first fill ping & pong */
+		for (i = 0; i < 2; i++) {
+			p1 = ao + 6 + i;    /* wm0 for y  */
+			*p1 = (regp1->paddr + regp1->info.y_off);
+			p1 = ao + 30 + i;  /* wm4 for cbcr */
+			*p1 = (regp1->paddr + regp1->info.cbcr_off);
+			regp1++;
+		}
+
+		for (i = 0; i < 2; i++) {
+			p2 = ao + 12 + i;    /* wm1 for y  */
+			*p2 = (regp2->paddr + regp2->info.y_off);
+			p2 = ao + 36 + i;  /* wm5 for cbcr */
+			*p2 = (regp2->paddr + regp2->info.cbcr_off);
+			regp2++;
+		}
+
+		for (i = 0; i < 2; i++) {
+			p3 = ao + 18 + i;    /* wm2 for y  */
+			*p3 = (regp3->paddr + regp3->info.y_off);
+			p3 = ao + 42 + i;  /* wm6 for cbcr */
+			*p3 = (regp3->paddr + regp3->info.cbcr_off);
+			regp3++;
+		}
+
+		if (ad->bufnum3 == 3) { /* 3 maximum to begin with. */
+			outp1->free_buf.available = 1;
+			outp1->free_buf.paddr = regp1->paddr;
+			outp1->free_buf.y_off = regp1->info.y_off;
+			outp1->free_buf.cbcr_off = regp1->info.cbcr_off;
+
+			outp2->free_buf.available = 1;
+			outp2->free_buf.paddr = regp2->paddr;
+			outp2->free_buf.y_off = regp2->info.y_off;
+			outp2->free_buf.cbcr_off = regp2->info.cbcr_off;
+
+			outp3->free_buf.available = 1;
+			outp3->free_buf.paddr = regp3->paddr;
+			outp3->free_buf.y_off = regp3->info.y_off;
+			outp3->free_buf.cbcr_off = regp3->info.cbcr_off;
+		}
+		break;
+#endif
+
 	case OUTPUT_1_AND_3: {
 		/* use wm0& 4 for preview, wm1&5 for video.*/
 		if ((ad->bufnum1 < 2) || (ad->bufnum2 < 2))
@@ -931,7 +1036,11 @@ static void vfe31_reset_internal_variables(void)
 	spin_unlock_irqrestore(&vfe31_ctrl->state_lock, flags);
 
 	/* 0 for continuous mode, 1 for snapshot mode */
+#ifdef CONFIG_CAMERA_ZSL	
+	vfe31_ctrl->operation_mode = VFE_MODE_OF_OPERATION_CONTINUOUS;
+#else
 	vfe31_ctrl->operation_mode = 0;
+#endif
 	vfe31_ctrl->outpath.output_mode = 0;
 	vfe31_ctrl->vfe_capture_count = 0;
 
@@ -1176,6 +1285,7 @@ static void vfe31_liveshot(void){
 		p_sync->liveshot_enabled = true;
 }
 
+#ifndef CONFIG_CAMERA_ZSL
 static void vfe31_stereocam(uint32_t enable){
 	struct msm_sync* p_sync = (struct msm_sync *)vfe_syncdata;
 	if (p_sync) {
@@ -1183,6 +1293,7 @@ static void vfe31_stereocam(uint32_t enable){
 		p_sync->stereocam_enabled = enable;
 	}
 }
+#endif
 
 static inline int rt_policy(int policy)
 {
@@ -1196,12 +1307,82 @@ static inline int task_has_rt_policy(struct task_struct *p)
 	return rt_policy(p->policy);
 }
 
+#ifdef CONFIG_CAMERA_ZSL
+static int vfe31_zsl(void)
+{
+	uint32_t irq_comp_mask = 0;
+	uint32_t temp;
+	/* capture command is valid for both idle and active state. */
+	irq_comp_mask	=
+		msm_io_r(vfe31_ctrl->vfebase + VFE_IRQ_COMP_MASK);
+
+	CDBG("%s:op mode %d O/P Mode %d\n", __func__,
+		vfe31_ctrl->operation_mode, vfe31_ctrl->outpath.output_mode);
+	if ((vfe31_ctrl->operation_mode == VFE_MODE_OF_OPERATION_ZSL)) {
+		if (vfe31_ctrl->outpath.output_mode & VFE31_OUTPUT_MODE_P) {
+			irq_comp_mask |=
+				((0x1 << (vfe31_ctrl->outpath.out0.ch0)) |
+				(0x1 << (vfe31_ctrl->outpath.out0.ch1)));
+		}
+		if (vfe31_ctrl->outpath.output_mode & VFE31_OUTPUT_MODE_T) {
+			irq_comp_mask |=
+				((0x1 << (vfe31_ctrl->outpath.out1.ch0 + 8)) |
+				(0x1 << (vfe31_ctrl->outpath.out1.ch1 + 8)));
+		}
+		if (vfe31_ctrl->outpath.output_mode & VFE31_OUTPUT_MODE_S) {
+			irq_comp_mask |=
+			((0x1 << (vfe31_ctrl->outpath.out2.ch0 + 8)) |
+			(0x1 << (vfe31_ctrl->outpath.out2.ch1 + 8)));
+		}
+		if (vfe31_ctrl->outpath.output_mode & VFE31_OUTPUT_MODE_P) {
+			msm_io_w(1, vfe31_ctrl->vfebase + V31_AXI_OUT_OFF + 20 +
+				24 * (vfe31_ctrl->outpath.out0.ch0));
+			temp = msm_io_r(vfe31_ctrl->vfebase + V31_AXI_OUT_OFF +
+				20 + 24 * (vfe31_ctrl->outpath.out0.ch0));
+			msm_io_w(1, vfe31_ctrl->vfebase + V31_AXI_OUT_OFF + 20 +
+				24 * (vfe31_ctrl->outpath.out0.ch1));
+			temp = msm_io_r(vfe31_ctrl->vfebase + V31_AXI_OUT_OFF +
+				 20 + 24 * (vfe31_ctrl->outpath.out0.ch1));
+		}
+		if (vfe31_ctrl->outpath.output_mode & VFE31_OUTPUT_MODE_T) {
+			msm_io_w(1, vfe31_ctrl->vfebase + V31_AXI_OUT_OFF + 20 +
+				24 * (vfe31_ctrl->outpath.out1.ch0));
+			temp = msm_io_r(vfe31_ctrl->vfebase + V31_AXI_OUT_OFF +
+				20 + 24 * (vfe31_ctrl->outpath.out1.ch0));
+			msm_io_w(1, vfe31_ctrl->vfebase + V31_AXI_OUT_OFF + 20 +
+				24 * (vfe31_ctrl->outpath.out1.ch1));
+			temp = msm_io_r(vfe31_ctrl->vfebase + V31_AXI_OUT_OFF +
+				 20 + 24 * (vfe31_ctrl->outpath.out1.ch1));
+		}
+		if (vfe31_ctrl->outpath.output_mode & VFE31_OUTPUT_MODE_S) {
+			msm_io_w(1, vfe31_ctrl->vfebase + V31_AXI_OUT_OFF + 20 +
+				24 * (vfe31_ctrl->outpath.out2.ch0));
+			temp = msm_io_r(vfe31_ctrl->vfebase + V31_AXI_OUT_OFF +
+				20 + 24 * (vfe31_ctrl->outpath.out2.ch0));
+			msm_io_w(1, vfe31_ctrl->vfebase + V31_AXI_OUT_OFF + 20 +
+				24 * (vfe31_ctrl->outpath.out2.ch1));
+			temp = msm_io_r(vfe31_ctrl->vfebase + V31_AXI_OUT_OFF +
+				20 + 24 * (vfe31_ctrl->outpath.out2.ch1));
+		}
+	}
+	msm_io_w(irq_comp_mask, vfe31_ctrl->vfebase + VFE_IRQ_COMP_MASK);
+	msm_io_r(vfe31_ctrl->vfebase + VFE_IRQ_COMP_MASK);
+	vfe31_start_common();
+	msm_io_r(vfe31_ctrl->vfebase + VFE_IRQ_COMP_MASK);
+	/* for debug */
+	msm_io_w(1, vfe31_ctrl->vfebase + 0x18C);
+	msm_io_w(1, vfe31_ctrl->vfebase + 0x188);
+	return 0;
+}
+#endif
+
 static int vfe31_capture(uint32_t num_frames_capture)
 {
 	uint32_t irq_comp_mask = 0;
 	uint32_t temp, tempirq;
 
 	struct msm_sync *p_sync = (struct msm_sync *)vfe_syncdata;
+
 #if 1
 	struct sched_param s = { .sched_priority = 1 };
 	int old_prio = current->rt_priority;
@@ -1209,6 +1390,12 @@ static int vfe31_capture(uint32_t num_frames_capture)
 	int cap_nice;
 #endif
 
+#ifdef CONFIG_CAMERA_ZSL
+	/* capture command is valid for both idle and active state. */
+	vfe31_ctrl->vfe_capture_count = num_frames_capture;
+#endif
+
+#ifndef CONFIG_CAMERA_ZSL
 	/* capture command is valid for both idle and active state. */
 	vfe31_ctrl->outpath.out1.capture_cnt = num_frames_capture;
 	if (vfe31_ctrl->operation_mode == 1) {
@@ -1216,18 +1403,32 @@ static int vfe31_capture(uint32_t num_frames_capture)
 			num_frames_capture;
 	}
 	vfe31_ctrl->vfe_capture_count = num_frames_capture;
+#endif
+
 	irq_comp_mask	=
 		msm_io_r(vfe31_ctrl->vfebase + VFE_IRQ_COMP_MASK);
 
+#ifndef CONFIG_CAMERA_ZSL
 	if (vfe31_ctrl->operation_mode == 1) {
+#else
+	if ((vfe31_ctrl->operation_mode ==
+		VFE_MODE_OF_OPERATION_SNAPSHOT) ||
+		(vfe31_ctrl->operation_mode ==
+		VFE_MODE_OF_OPERATION_ZSL)){
+#endif
 		if (vfe31_ctrl->outpath.output_mode & VFE31_OUTPUT_MODE_PT) {
 			irq_comp_mask |= (0x1 << vfe31_ctrl->outpath.out0.ch0 |
 					0x1 << vfe31_ctrl->outpath.out0.ch1);
 		}
 		if (vfe31_ctrl->outpath.output_mode & VFE31_OUTPUT_MODE_S) {
 			irq_comp_mask |=
+#ifndef CONFIG_CAMERA_ZSL
 			(0x1 << (vfe31_ctrl->outpath.out1.ch0 + 8) |
 			0x1 << (vfe31_ctrl->outpath.out1.ch1 + 8));
+#else
+			((0x1 << (vfe31_ctrl->outpath.out1.ch0 + 8)) |
+			(0x1 << (vfe31_ctrl->outpath.out1.ch1 + 8)));
+#endif
 		}
 		if (vfe31_ctrl->outpath.output_mode & VFE31_OUTPUT_MODE_PT) {
 			msm_io_w(1, vfe31_ctrl->vfebase + V31_AXI_OUT_OFF + 20 +
@@ -1326,7 +1527,12 @@ static int vfe31_start(void)
 	uint32_t irq_comp_mask = 0;
 	uint32_t temp;
 	/* start command now is only good for continuous mode. */
+#ifndef CONFIG_CAMERA_ZSL
 	if (vfe31_ctrl->operation_mode & 1)
+#else
+	if ((vfe31_ctrl->operation_mode != VFE_MODE_OF_OPERATION_CONTINUOUS) &&
+		(vfe31_ctrl->operation_mode != VFE_MODE_OF_OPERATION_VIDEO))
+#endif
 		return 0;
 	irq_comp_mask	=
 		msm_io_r(vfe31_ctrl->vfebase + VFE_IRQ_COMP_MASK);
@@ -1511,7 +1717,9 @@ static int vfe31_proc_general(struct msm_vfe31_cmd *cmd)
 	uint32_t *cmdp = NULL;
 	uint32_t *cmdp_local = NULL;
 	uint32_t snapshot_cnt = 0;
+#ifndef CONFIG_CAMERA_ZSL
 	uint32_t stereo_cam_enable = 0;
+#endif
 	struct msm_sync* p_sync = (struct msm_sync *)vfe_syncdata;
 
 	CDBG("vfe31_proc_general: cmdID = %s, length = %d\n",
@@ -1530,6 +1738,12 @@ static int vfe31_proc_general(struct msm_vfe31_cmd *cmd)
 	case V31_UPDATE:
 		vfe31_update();
 		break;
+#ifdef CONFIG_CAMERA_ZSL
+	case V31_ZSL:
+//		pr_info("vfe31_proc_general: cmdID = %s\n", vfe31_general_cmd[cmd->id]);
+		vfe31_zsl();
+		break;
+#endif
 	case V31_CAPTURE:
 		pr_info("vfe31_proc_general: cmdID = V31_CAPTURE\n");
 		if (copy_from_user(&snapshot_cnt, (void __user *)(cmd->value),
@@ -1805,6 +2019,9 @@ static int vfe31_proc_general(struct msm_vfe31_cmd *cmd)
 		msm_io_memcpy(vfe31_ctrl->vfebase + vfe31_cmd[cmd->id].offset,
 		cmdp_local, 16);
 		cmdp_local += 4;
+#ifdef CONFIG_CAMERA_ZSL
+		vfe31_ctrl->rolloff_update = true;
+#endif
 		vfe31_program_dmi_cfg(ROLLOFF_RAM);
 		/* for loop for extrcting init table. */
 		for (i = 0 ; i < (VFE31_ROLL_OFF_INIT_TABLE_SIZE * 2) ; i++) {
@@ -1905,6 +2122,7 @@ static int vfe31_proc_general(struct msm_vfe31_cmd *cmd)
 		vfe31_liveshot();
 		break;
 
+#ifndef CONFIG_CAMERA_ZSL
     case V31_STEREOCAM:
 		if (copy_from_user(&stereo_cam_enable, (void __user *)(cmd->value),
 				sizeof(uint32_t))) {
@@ -1913,6 +2131,7 @@ static int vfe31_proc_general(struct msm_vfe31_cmd *cmd)
 		}
 		vfe31_stereocam(stereo_cam_enable);
 		break;
+#endif
 
 	case V31_RGB_G_CFG: {
 		cmdp = kmalloc(cmd->length, GFP_ATOMIC);
@@ -2105,6 +2324,9 @@ static int vfe31_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 	struct msm_pmem_region   *regptr = NULL;
 	struct vfe_cmd_stats_ack *sack = NULL;
 	if (cmd->cmd_type != CMD_FRAME_BUF_RELEASE &&
+#ifdef CONFIG_CAMERA_ZSL
+		cmd->cmd_type != CMD_SNAP_BUF_RELEASE &&
+#endif
 		cmd->cmd_type != CMD_STATS_AEC_BUF_RELEASE &&
 		cmd->cmd_type != CMD_STATS_AWB_BUF_RELEASE &&
 		cmd->cmd_type != CMD_STATS_IHIST_BUF_RELEASE &&
@@ -2120,7 +2342,12 @@ static int vfe31_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 		}
 	} else {
 	/* here eith stats release or frame release. */
+#ifndef CONFIG_CAMERA_ZSL
 		if (cmd->cmd_type != CMD_FRAME_BUF_RELEASE) {
+#else
+		if (cmd->cmd_type != CMD_FRAME_BUF_RELEASE &&
+			cmd->cmd_type != CMD_SNAP_BUF_RELEASE) {
+#endif
 			/* then must be stats release. */
 			if (!data)
 				return -EFAULT;
@@ -2221,9 +2448,37 @@ static int vfe31_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 		fbuf->available = 1;
 	}
 		break;
-
+#ifdef CONFIG_CAMERA_ZSL
+	case CMD_SNAP_BUF_RELEASE:{
+		struct msm_frame *b;
+		unsigned long p;
+		struct vfe31_free_buf *fbuf = NULL;
+		if (!data)
+			return -EFAULT;
+#else
 	case CMD_SNAP_BUF_RELEASE: {
 	}
+#endif
+#ifdef CONFIG_CAMERA_ZSL
+		b = (struct msm_frame *)(cmd->value);
+		p = *(unsigned long *)data;
+
+		CDBG("CMD_PIC_BUF_RELEASE b->path = %d\n", b->path);
+
+		if (b->path & OUTPUT_TYPE_T) {
+			CDBG("CMD_FRAME_BUF_RELEASE got free buffer\n");
+			fbuf = &vfe31_ctrl->outpath.out1.free_buf;
+		} else if (b->path & OUTPUT_TYPE_S) {
+			fbuf = &vfe31_ctrl->outpath.out2.free_buf;
+		} else
+			return -EFAULT;
+
+		fbuf->paddr = p;
+		fbuf->y_off = b->y_off;
+		fbuf->cbcr_off = b->cbcr_off;
+		fbuf->available = 1;
+		}
+#endif
 		break;
 	case CMD_STATS_AEC_BUF_RELEASE:
 		vfe31_stats_aec_ack(sack);
@@ -2302,6 +2557,9 @@ static int vfe31_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 	case CMD_AXI_CFG_SNAP: {
 		struct axidata *axid;
 		uint32_t *axio = NULL;
+#ifdef CONFIG_CAMERA_ZSL
+		CDBG("%s, CMD_AXI_CFG_SNAP\n", __func__);
+#endif
 		axid = data;
 		if (!axid)
 			return -EFAULT;
@@ -2323,6 +2581,34 @@ static int vfe31_config(struct msm_vfe_cfg_cmd *cmd, void *data)
 		kfree(axio);
 	}
 		break;
+
+#ifdef CONFIG_CAMERA_ZSL
+	case CMD_AXI_CFG_ZSL: {
+		struct axidata *axid;
+		uint32_t *axio = NULL;
+		CDBG("%s, CMD_AXI_CFG_ZSL\n", __func__);
+		axid = data;
+		if (!axid)
+			return -EFAULT;
+		axio =
+			kmalloc(vfe31_cmd[V31_AXI_OUT_CFG].length,
+				GFP_ATOMIC);
+		if (!axio) {
+			rc = -ENOMEM;
+			break;
+		}
+
+		if (copy_from_user(axio, (void __user *)(vfecmd.value),
+				vfe31_cmd[V31_AXI_OUT_CFG].length)) {
+			kfree(axio);
+			rc = -EFAULT;
+			break;
+		}
+		vfe31_config_axi(OUTPUT_1_2_AND_3, axid, axio);
+		kfree(axio);
+	}
+		break;
+#endif
 
 	case CMD_AXI_CFG_VIDEO: {
 		struct axidata *axid;
@@ -2484,9 +2770,20 @@ static void vfe31_process_reg_update_irq(void)
 				&vfe31_ctrl->update_ack_lock, flags);
 		}
 	}
+#ifndef CONFIG_CAMERA_ZSL
 	if (vfe31_ctrl->operation_mode & 1) {  /* in snapshot mode */
+#else
+	/* in snapshot mode */
+	if (vfe31_ctrl->operation_mode ==
+		VFE_MODE_OF_OPERATION_SNAPSHOT) {
+#endif
 		/* later we need to add check for live snapshot mode. */
+#ifndef CONFIG_CAMERA_ZSL
 		vfe31_ctrl->vfe_capture_count--;
+#else
+		if (vfe31_ctrl->vfe_capture_count)
+			vfe31_ctrl->vfe_capture_count--;
+#endif
 		/* if last frame to be captured: */
 		if (vfe31_ctrl->vfe_capture_count == 0) {
 
@@ -2606,13 +2903,26 @@ static void vfe31_process_reset_irq(void)
 static void vfe31_process_camif_sof_irq(void)
 {
 	uint32_t  temp;
+
+#ifndef CONFIG_CAMERA_ZSL
 	if (vfe31_ctrl->operation_mode == 3) {  /* in raw snapshot mode */
+#else
+
+	/* in raw snapshot mode */
+	if (vfe31_ctrl->operation_mode ==
+		VFE_MODE_OF_OPERATION_RAW_SNAPSHOT) {
+#endif
 		if (vfe31_ctrl->start_ack_pending) {
 			pr_info("irq startAckIrq\n");
 			vfe31_send_msg_no_payload(MSG_ID_START_ACK);
 			vfe31_ctrl->start_ack_pending = FALSE;
 		}
+#ifndef CONFIG_CAMERA_ZSL
 		vfe31_ctrl->vfe_capture_count--;
+#else
+		if (vfe31_ctrl->vfe_capture_count)
+			vfe31_ctrl->vfe_capture_count--;
+#endif
 		/* if last frame to be captured: */
 		if (vfe31_ctrl->vfe_capture_count == 0) {
 			/* Ensure the write order while writing
@@ -2754,7 +3064,12 @@ static void vfe31_process_output_path_irq_0(void)
 {
 	uint32_t ping_pong;
 	uint32_t pyaddr, pcbcraddr;
+#ifndef CONFIG_CAMERA_ZSL
 	uint8_t out_bool = 0;
+#else
+	uint8_t skip_frame =
+		(vfe31_ctrl->outpath.out0.free_buf.available == false);
+#endif
 
 	/* we render frames in the following conditions:
 	1. Continuous mode and the free buffer is avaialable.
@@ -2762,6 +3077,7 @@ static void vfe31_process_output_path_irq_0(void)
 	when pending snapshot count is <=1,  then no need to use
 	free buffer.
 	*/
+#ifndef CONFIG_CAMERA_ZSL
 	if (vfe31_ctrl->s_info == NULL) {
 		pr_info("[CAM]s_info is NULL\n");
 	} else {
@@ -2812,6 +3128,14 @@ static void vfe31_process_output_path_irq_0(void)
 			vfe_send_outmsg(MSG_ID_OUTPUT_P, pyaddr,
 				pcbcraddr);
 		}
+#else
+	if ((VFE_MODE_OF_OPERATION_ZSL == vfe31_ctrl->operation_mode) &&
+		(vfe31_ctrl->rolloff_update == true)) {
+		vfe31_ctrl->rolloff_update = false;
+		skip_frame = true;
+	}
+#endif
+#ifndef CONFIG_CAMERA_ZSL
 	} else {
 		vfe31_ctrl->outpath.out0.frame_drop_cnt++;
 		if (vfe31_ctrl->outpath.out0.frame_drop_cnt > 20) {
@@ -2822,8 +3146,43 @@ static void vfe31_process_output_path_irq_0(void)
 					vfe31_ctrl->outpath.out0.free_buf.available);
 		}
 	}
+#else
+	if (!skip_frame) {
+		ping_pong = msm_io_r(vfe31_ctrl->vfebase +
+			VFE_BUS_PING_PONG_STATUS);
+
+		/* Y channel */
+		pyaddr = vfe31_get_ch_addr(ping_pong,
+			vfe31_ctrl->outpath.out0.ch0);
+		/* Chroma channel */
+		pcbcraddr = vfe31_get_ch_addr(ping_pong,
+			vfe31_ctrl->outpath.out0.ch1);
+
+		CDBG("output path 0, pyaddr = 0x%x, pcbcraddr = 0x%x\n",
+			pyaddr, pcbcraddr);
+		/* Y channel */
+		vfe31_put_ch_addr(ping_pong,
+			vfe31_ctrl->outpath.out0.ch0,
+			vfe31_ctrl->outpath.out0.free_buf.paddr +
+			vfe31_ctrl->outpath.out0.free_buf.y_off);
+		/* Chroma channel */
+		vfe31_put_ch_addr(ping_pong,
+			vfe31_ctrl->outpath.out0.ch1,
+			vfe31_ctrl->outpath.out0.free_buf.paddr +
+			vfe31_ctrl->outpath.out0.free_buf.cbcr_off);
+
+		vfe31_ctrl->outpath.out0.free_buf.available = 0;
+
+		/* if continuous mode, for display. (preview) */
+		vfe_send_outmsg(MSG_ID_OUTPUT_P, pyaddr, pcbcraddr);
+	} else {
+		vfe31_ctrl->outpath.out0.frame_drop_cnt++;
+		pr_warning("path_irq_0 - no free buffer!\n");
+	}
+#endif
 }
 
+#ifndef CONFIG_CAMERA_ZSL
 static void vfe31_process_output_path_irq_1(void)
 {
 	uint32_t ping_pong;
@@ -2882,18 +3241,215 @@ static void vfe31_process_output_path_irq_1(void)
 			}
 	}
 }
+#else
+static void vfe31_process_snapshot_frame(void)
+{
+	uint32_t ping_pong;
+	uint32_t pyaddr, pcbcraddr;
+	ping_pong = msm_io_r(vfe31_ctrl->vfebase +
+		VFE_BUS_PING_PONG_STATUS);
+
+	/* Y channel- Main Image */
+	pyaddr = vfe31_get_ch_addr(ping_pong,
+		vfe31_ctrl->outpath.out1.ch0);
+	/* Chroma channel - TN Image */
+	pcbcraddr = vfe31_get_ch_addr(ping_pong,
+		vfe31_ctrl->outpath.out1.ch1);
+
+	CDBG("%s: snapshot main, pyaddr = 0x%x, pcbcraddr = 0x%x\n",
+		__func__, pyaddr, pcbcraddr);
+	if (vfe31_ctrl->outpath.out1.free_buf.available) {
+		/* Y channel */
+		vfe31_put_ch_addr(ping_pong,
+			vfe31_ctrl->outpath.out1.ch0,
+			vfe31_ctrl->outpath.out1.free_buf.paddr +
+			vfe31_ctrl->outpath.out1.free_buf.y_off);
+		/* Chroma channel */
+		vfe31_put_ch_addr(ping_pong,
+			vfe31_ctrl->outpath.out1.ch1,
+			vfe31_ctrl->outpath.out1.free_buf.paddr +
+			vfe31_ctrl->outpath.out1.free_buf.cbcr_off);
+		vfe31_ctrl->outpath.out1.free_buf.available = 0;
+	}
+	vfe_send_outmsg(MSG_ID_OUTPUT_S, pyaddr, pcbcraddr);
+
+	/* Y channel- TN Image */
+	pyaddr = vfe31_get_ch_addr(ping_pong,
+		vfe31_ctrl->outpath.out0.ch0);
+	/* Chroma channel - TN Image */
+	pcbcraddr = vfe31_get_ch_addr(ping_pong,
+		vfe31_ctrl->outpath.out0.ch1);
+
+	CDBG("%s: snapshot TN, pyaddr = 0x%x, pcbcraddr = 0x%x\n",
+		__func__, pyaddr, pcbcraddr);
+	if (vfe31_ctrl->outpath.out0.free_buf.available) {
+		/* Y channel */
+		vfe31_put_ch_addr(ping_pong,
+			vfe31_ctrl->outpath.out0.ch0,
+			vfe31_ctrl->outpath.out0.free_buf.paddr +
+			vfe31_ctrl->outpath.out0.free_buf.y_off);
+		/* Chroma channel */
+		vfe31_put_ch_addr(ping_pong,
+			vfe31_ctrl->outpath.out0.ch1,
+			vfe31_ctrl->outpath.out0.free_buf.paddr +
+			vfe31_ctrl->outpath.out0.free_buf.cbcr_off);
+		vfe31_ctrl->outpath.out0.free_buf.available = 0;
+	}
+
+	vfe_send_outmsg(MSG_ID_OUTPUT_T, pyaddr, pcbcraddr);
+
+	/* in snapshot mode if done then send
+		snapshot done message */
+	if (vfe31_ctrl->vfe_capture_count == 0) {
+		vfe31_send_msg_no_payload(MSG_ID_SNAPSHOT_DONE);
+		/* Ensure the write order while writing
+			to the cmd register using barrier */
+		msm_io_w_mb(CAMIF_COMMAND_STOP_IMMEDIATELY,
+			vfe31_ctrl->vfebase +
+			VFE_CAMIF_COMMAND);
+	}
+}
+
+static void vfe31_process_raw_snapshot_frame(void)
+{
+	uint32_t ping_pong;
+	uint32_t pyaddr, pcbcraddr;
+	ping_pong = msm_io_r(vfe31_ctrl->vfebase +
+		VFE_BUS_PING_PONG_STATUS);
+
+	/* Y channel- Main Image */
+	pyaddr = vfe31_get_ch_addr(ping_pong,
+		vfe31_ctrl->outpath.out1.ch0);
+	/* Chroma channel - Main Image */
+	pcbcraddr = vfe31_get_ch_addr(ping_pong,
+		vfe31_ctrl->outpath.out1.ch1);
+
+	CDBG("%s: snapshot main, pyaddr = 0x%x, pcbcraddr = 0x%x\n",
+		__func__, pyaddr, pcbcraddr);
+	if (vfe31_ctrl->outpath.out1.free_buf.available) {
+		/* Y channel */
+		vfe31_put_ch_addr(ping_pong,
+			vfe31_ctrl->outpath.out1.ch0,
+			vfe31_ctrl->outpath.out1.free_buf.paddr +
+			vfe31_ctrl->outpath.out1.free_buf.y_off);
+		/* Chroma channel */
+		vfe31_put_ch_addr(ping_pong,
+			vfe31_ctrl->outpath.out1.ch1,
+			vfe31_ctrl->outpath.out1.free_buf.paddr +
+			vfe31_ctrl->outpath.out1.free_buf.cbcr_off);
+		vfe31_ctrl->outpath.out1.free_buf.available = 0;
+	}
+	 vfe_send_outmsg(MSG_ID_OUTPUT_S, pyaddr, pcbcraddr);
+
+	/* in snapshot mode if done then send
+		snapshot done message */
+	if (vfe31_ctrl->vfe_capture_count == 0) {
+		vfe31_send_msg_no_payload(MSG_ID_SNAPSHOT_DONE);
+		/* Ensure the write order while writing
+		to the cmd register using barrier */
+		msm_io_w_mb(CAMIF_COMMAND_STOP_IMMEDIATELY,
+			vfe31_ctrl->vfebase +
+			VFE_CAMIF_COMMAND);
+	}
+}
+static void vfe31_process_zsl_frame(void)
+{
+	uint32_t ping_pong;
+	uint32_t pyaddr, pcbcraddr;
+	ping_pong = msm_io_r(vfe31_ctrl->vfebase +
+		VFE_BUS_PING_PONG_STATUS);
+
+	/* Y channel- Main Image */
+	pyaddr = vfe31_get_ch_addr(ping_pong,
+		vfe31_ctrl->outpath.out2.ch0);
+	/* Chroma channel - Main Image */
+	pcbcraddr = vfe31_get_ch_addr(ping_pong,
+		vfe31_ctrl->outpath.out2.ch1);
+
+	CDBG("%s: snapshot main, pyaddr = 0x%x, pcbcraddr = 0x%x\n",
+		__func__, pyaddr, pcbcraddr);
+	if (vfe31_ctrl->outpath.out2.free_buf.available) {
+		/* Y channel */
+		vfe31_put_ch_addr(ping_pong,
+			vfe31_ctrl->outpath.out2.ch0,
+			vfe31_ctrl->outpath.out2.free_buf.paddr +
+			vfe31_ctrl->outpath.out2.free_buf.y_off);
+		/* Chroma channel */
+		vfe31_put_ch_addr(ping_pong,
+			vfe31_ctrl->outpath.out2.ch1,
+			vfe31_ctrl->outpath.out2.free_buf.paddr +
+			vfe31_ctrl->outpath.out2.free_buf.cbcr_off);
+		vfe31_ctrl->outpath.out2.free_buf.available = 0;
+	}
+	 vfe_send_outmsg(MSG_ID_OUTPUT_S, pyaddr, pcbcraddr);
+
+	/* Y channel- TN Image */
+	pyaddr = vfe31_get_ch_addr(ping_pong,
+		vfe31_ctrl->outpath.out1.ch0);
+	/* Chroma channel - TN Image */
+	pcbcraddr = vfe31_get_ch_addr(ping_pong,
+		vfe31_ctrl->outpath.out1.ch1);
+
+	CDBG("%s: snapshot TN, pyaddr = 0x%x, pcbcraddr = 0x%x\n",
+		__func__, pyaddr, pcbcraddr);
+	if (vfe31_ctrl->outpath.out1.free_buf.available) {
+		/* Y channel */
+		vfe31_put_ch_addr(ping_pong,
+			vfe31_ctrl->outpath.out1.ch0,
+			vfe31_ctrl->outpath.out1.free_buf.paddr +
+			vfe31_ctrl->outpath.out1.free_buf.y_off);
+		/* Chroma channel */
+		vfe31_put_ch_addr(ping_pong,
+			vfe31_ctrl->outpath.out1.ch1,
+			vfe31_ctrl->outpath.out1.free_buf.paddr +
+			vfe31_ctrl->outpath.out1.free_buf.cbcr_off);
+		vfe31_ctrl->outpath.out1.free_buf.available = 0;
+	}
+
+	vfe_send_outmsg(MSG_ID_OUTPUT_T, pyaddr, pcbcraddr);
+}
+
+static void vfe31_process_output_path_irq_1(void)
+{
+	CDBG("%s, operation_mode = %d, cap_cnt = %d\n", __func__,
+		vfe31_ctrl->operation_mode, vfe31_ctrl->vfe_capture_count);
+
+	/* In Snapshot mode */
+	if ((VFE_MODE_OF_OPERATION_SNAPSHOT == vfe31_ctrl->operation_mode)
+		&& ((vfe31_ctrl->vfe_capture_count <= 1)
+		|| (vfe31_ctrl->outpath.out0.free_buf.available &&
+		vfe31_ctrl->outpath.out1.free_buf.available))) {
+		vfe31_process_snapshot_frame();
+	} else if ((VFE_MODE_OF_OPERATION_RAW_SNAPSHOT ==
+		vfe31_ctrl->operation_mode) &&
+		((vfe31_ctrl->vfe_capture_count <= 1) ||
+		(vfe31_ctrl->outpath.out1.free_buf.available))) {
+		vfe31_process_raw_snapshot_frame();
+	} else if ((VFE_MODE_OF_OPERATION_ZSL == vfe31_ctrl->operation_mode)
+		&& (vfe31_ctrl->outpath.out1.free_buf.available
+		&& vfe31_ctrl->outpath.out2.free_buf.available)) {
+		vfe31_process_zsl_frame();
+	} else {
+		vfe31_ctrl->outpath.out1.frame_drop_cnt++;
+		pr_info("path_irq_1 - no free buffer!\n");
+	}
+}
+#endif
 
 static void vfe31_process_output_path_irq_2(void)
 {
 	uint32_t ping_pong;
 	uint32_t pyaddr, pcbcraddr;
+#ifndef CONFIG_CAMERA_ZSL
 	uint8_t out_bool = 0;
+#endif
 	/* we render frames in the following conditions:
 	1. Continuous mode and the free buffer is avaialable.
 	2. In snapshot shot mode, free buffer is not always available.
 	-- when pending snapshot count is <=1,  then no need to use
 	free buffer.
 	*/
+#ifndef CONFIG_CAMERA_ZSL
 	out_bool =
 		((vfe31_ctrl->operation_mode & 1) &&
 		(vfe31_ctrl->vfe_capture_count <= 1)) ||
@@ -2901,10 +3457,15 @@ static void vfe31_process_output_path_irq_2(void)
 
 	CDBG("%s: op mode = %d, capture_cnt = %d\n", __func__,
 		 vfe31_ctrl->operation_mode, vfe31_ctrl->vfe_capture_count);
+#endif
 	CDBG("%s: output2.free_buf.available = %d\n", __func__,
 		 vfe31_ctrl->outpath.out2.free_buf.available);
 
+#ifndef CONFIG_CAMERA_ZSL
 	if (out_bool) {
+#else
+	if (vfe31_ctrl->outpath.out2.free_buf.available) {
+#endif
 			ping_pong = msm_io_r(vfe31_ctrl->vfebase +
 				VFE_BUS_PING_PONG_STATUS);
 
@@ -2918,6 +3479,7 @@ static void vfe31_process_output_path_irq_2(void)
 			CDBG("video output, pyaddr = 0x%x, pcbcraddr = 0x%x\n",
 				pyaddr, pcbcraddr);
 
+#ifndef CONFIG_CAMERA_ZSL
 			if (vfe31_ctrl->outpath.out2.free_buf.available) {
 				/* Y channel */
 				vfe31_put_ch_addr(ping_pong,
@@ -2931,6 +3493,19 @@ static void vfe31_process_output_path_irq_2(void)
 				vfe31_ctrl->outpath.out2.free_buf.cbcr_off);
 				vfe31_ctrl->outpath.out2.free_buf.available = 0;
 			}
+#else
+			/* Y channel */
+			vfe31_put_ch_addr(ping_pong,
+			vfe31_ctrl->outpath.out2.ch0,
+			vfe31_ctrl->outpath.out2.free_buf.paddr +
+			vfe31_ctrl->outpath.out2.free_buf.y_off);
+			/* Chroma channel */
+			vfe31_put_ch_addr(ping_pong,
+			vfe31_ctrl->outpath.out2.ch1,
+			vfe31_ctrl->outpath.out2.free_buf.paddr +
+			vfe31_ctrl->outpath.out2.free_buf.cbcr_off);
+			vfe31_ctrl->outpath.out2.free_buf.available = 0;
+#endif
 			vfe_send_outmsg(MSG_ID_OUTPUT_V, pyaddr, pcbcraddr);
 		} else {
 			vfe31_ctrl->outpath.out2.frame_drop_cnt++;
@@ -3130,10 +3705,11 @@ static void vfe31_do_tasklet(unsigned long data)
 {
 	unsigned long flags;
 
-	uint32_t temp_reg_data;
-
 	struct vfe31_isr_queue_cmd *qcmd = NULL;
+#ifndef CONFIG_CAMERA_ZSL
+	uint32_t temp_reg_data;
 	struct msm_sync* p_sync = (struct msm_sync *)vfe_syncdata;
+#endif
 
 	CDBG("=== vfe31_do_tasklet start === \n");
 
@@ -3172,8 +3748,10 @@ static void vfe31_do_tasklet(unsigned long data)
 
 		spin_lock_irqsave(&vfe31_ctrl->state_lock, flags);
 		if (vfe31_ctrl->vstate == VFE_STATE_ACTIVE) {
+#ifndef CONFIG_CAMERA_ZSL
 			/* irqs below are only valid when in active state. */
 			spin_unlock_irqrestore(&vfe31_ctrl->state_lock, flags);
+#endif
 
 			if (qcmd->vfeInterruptStatus1 &
 					VFE31_IMASK_ERROR_ONLY_1) {
@@ -3181,7 +3759,10 @@ static void vfe31_do_tasklet(unsigned long data)
 				vfe31_process_error_irq(
 					qcmd->vfeInterruptStatus1 &
 					VFE31_IMASK_ERROR_ONLY_1);
-
+#ifdef CONFIG_CAMERA_ZSL
+			/* irqs below are only valid when in active state. */
+			spin_unlock_irqrestore(&vfe31_ctrl->state_lock, flags);
+#endif
 #ifdef BUS_RATE_DEBUG
 					schedule_work(&workq);
 #endif
@@ -3202,6 +3783,7 @@ static void vfe31_do_tasklet(unsigned long data)
 				CDBG("Image composite done 2 irq occured.\n");
 				vfe31_process_output_path_irq_2();
 			}
+#ifndef CONFIG_CAMERA_ZSL
 			/* in snapshot mode if done then send
 			snapshot done message */
 			if (vfe31_ctrl->operation_mode & 1) {
@@ -3240,6 +3822,7 @@ static void vfe31_do_tasklet(unsigned long data)
 						MSG_ID_SP3D_SEND_R);
 				}
 			}
+#endif
 			/* then process stats irq. */
 			if (vfe31_ctrl->stats_comp) {
 				/* process stats comb interrupt. */

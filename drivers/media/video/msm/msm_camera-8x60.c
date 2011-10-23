@@ -40,11 +40,7 @@
 #include <media/msm_camera_sensor.h>
 #include <linux/syscalls.h>
 #include <linux/hrtimer.h>
-#ifdef CONFIG_CAMERA_ZSL
-#include "msm_vfe_8x60_ZSL.h"
-#else
 #include "msm_vfe_8x60.h"
-#endif
 
 DEFINE_MUTEX(ctrl_cmd_lock);
 
@@ -2222,9 +2218,9 @@ static int msm_axi_config(struct msm_sync *sync, void __user *arg)
 #endif
 		printk("%s, cfgcmd.cmd_type = %d\n", __func__, cfgcmd.cmd_type);
 		return msm_frame_axi_cfg(sync, &cfgcmd);
-    case CMD_AXI_CFG_VPE:
-    case CMD_AXI_CFG_SNAP_VPE:
-    case CMD_AXI_CFG_SNAP_THUMB_VPE:
+	case CMD_AXI_CFG_VPE:
+	case CMD_AXI_CFG_SNAP_VPE:
+	case CMD_AXI_CFG_SNAP_THUMB_VPE:
 		return msm_vpe_frame_cfg(sync, (void *)&cfgcmd);
 
 	case CMD_STATS_AXI_CFG:
