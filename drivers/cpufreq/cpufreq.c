@@ -1075,7 +1075,7 @@ static int cpufreq_add_dev(struct sys_device *sys_dev)
 	unsigned long flags;
 	unsigned int j;
 #ifdef CONFIG_HOTPLUG_CPU
-	struct cpufreq_policy *cp;
+	struct cpufreq_policy *cp = NULL;
 	int sibling;
 #endif
 

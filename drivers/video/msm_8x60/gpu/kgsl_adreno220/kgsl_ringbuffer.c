@@ -782,9 +782,10 @@ kgsl_ringbuffer_issueibcmds(struct kgsl_device_private *dev_priv,
 		return -ENOMEM;
 	}
 	for (i = 0; i < numibs; i++) {
+#ifdef CONFIG_MSM_KGSL_CFF_DUMP
 		kgsl_cffdump_parse_ibs(dev_priv, NULL,
 			ibdesc[i].gpuaddr, ibdesc[i].sizedwords, false);
-
+#endif
 		*cmds++ = PM4_HDR_INDIRECT_BUFFER_PFD;
 		*cmds++ = ibdesc[i].gpuaddr;
 		*cmds++ = ibdesc[i].sizedwords;
