@@ -359,7 +359,15 @@ void kgsl_early_suspend_driver(struct early_suspend *h)
 					struct kgsl_device, display_off);
 
 	KGSL_PWR_INFO("early suspend start\n");
-	for (i = 0; i < KGSL_DEVICE_MAX; i++) {
+	/* faux123: special case for device 0, put it into lowest state */
+	device = kgsl_driver.devp[0];
+	mutex_lock(&device->mutex);
+	kgsl_pwrctrl_pwrlevel_change(device, (device->pwrctrl.num_pwrlevels-1));
+	mutex_unlock(&device->mutex);
+
+	/* faux123: start from device 1, because device 0 has hw bug
+	   which is causing the device to not wake up */
+	for (i = 1; i < KGSL_DEVICE_MAX; i++) {
 		device = kgsl_driver.devp[i];
 		if (!device)
 			continue;
@@ -368,10 +376,10 @@ void kgsl_early_suspend_driver(struct early_suspend *h)
 		device->requested_state = KGSL_STATE_SLUMBER;
 		result = kgsl_pwrctrl_sleep(device);
 		if (result == KGSL_SUCCESS)
-			KGSL_PWR_INFO("going into slumber, device %d\n",
+			pr_info("going into slumber, device %d\n",
 					device->id);
 		else
-			KGSL_PWR_ERR("cannot go into slumber, device %d\n",
+			pr_info("cannot go into slumber, device %d\n",
 					device->id);
 		mutex_unlock(&device->mutex);
 	}
@@ -386,7 +394,15 @@ void kgsl_late_resume_driver(struct early_suspend *h)
 					struct kgsl_device, display_off);
 
 	KGSL_PWR_INFO("late resume start\n");
-	for (i = 0; i < KGSL_DEVICE_MAX; i++) {
+	/* faux123: special case for device 0, restore back to turbo state */
+	device = kgsl_driver.devp[0];
+	mutex_lock(&device->mutex);
+	kgsl_pwrctrl_pwrlevel_change(device, KGSL_PWRLEVEL_TURBO);
+	mutex_unlock(&device->mutex);
+
+	/* faux123: start from device 1, because device 0 has hw bug
+	   which is causing the device to not wake up */
+	for (i = 1; i < KGSL_DEVICE_MAX; i++) {
 		device = kgsl_driver.devp[i];
 		if (!device)
 			continue;
@@ -394,7 +410,7 @@ void kgsl_late_resume_driver(struct early_suspend *h)
 		mutex_lock(&device->mutex);
 		result = kgsl_pwrctrl_wake(device);
 		if (result != KGSL_SUCCESS)
-			KGSL_PWR_ERR("cannot wake from slumber, device %d\n",
+			pr_info("cannot wake from slumber, device %d\n",
 						device->id);
 		device->pwrctrl.restore_slumber = 0;
 		mutex_unlock(&device->mutex);

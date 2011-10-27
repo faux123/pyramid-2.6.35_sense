@@ -51,7 +51,7 @@
 
 #define KGSL_PWRLEVEL_TURBO 0
 #define KGSL_PWRLEVEL_NOMINAL 1
-#define KGSL_DEFAULT_PWRLEVEL 1
+#define KGSL_DEFAULT_PWRLEVEL KGSL_PWRLEVEL_NOMINAL
 
 struct kgsl_busy {
 	struct timeval start;
