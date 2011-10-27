@@ -46,6 +46,7 @@
 
 
 static void kgsl_put_phys_file(struct file *file);
+static bool slumber_status[KGSL_DEVICE_MAX] = {false, false, false};
 
 /* Allocate a new context id */
 
@@ -375,12 +376,16 @@ void kgsl_early_suspend_driver(struct early_suspend *h)
 		mutex_lock(&device->mutex);
 		device->requested_state = KGSL_STATE_SLUMBER;
 		result = kgsl_pwrctrl_sleep(device);
-		if (result == KGSL_SUCCESS)
+		/* faux123: keep track of who actually is going into slumber */
+		if (result == KGSL_SUCCESS) {
+			slumber_status[i] = true;
 			pr_info("going into slumber, device %d\n",
 					device->id);
-		else
+		} else {
+			slumber_status[i] = false;
 			pr_info("cannot go into slumber, device %d\n",
 					device->id);
+		}
 		mutex_unlock(&device->mutex);
 	}
 	KGSL_PWR_INFO("early suspend end\n");
@@ -408,11 +413,17 @@ void kgsl_late_resume_driver(struct early_suspend *h)
 			continue;
 
 		mutex_lock(&device->mutex);
-		result = kgsl_pwrctrl_wake(device);
-		if (result != KGSL_SUCCESS)
-			pr_info("cannot wake from slumber, device %d\n",
+		/* faux123: only wake up the device when it was actually 
+		   slumbering */
+		pr_info("waking from slumber, device %d\n",
+			device->id);
+		if (slumber_status[i] == true) {
+			result = kgsl_pwrctrl_wake(device);
+			if (result != KGSL_SUCCESS)
+				pr_info("cannot wake from slumber, device %d\n",
 						device->id);
-		device->pwrctrl.restore_slumber = 0;
+			device->pwrctrl.restore_slumber = 0;
+		}
 		mutex_unlock(&device->mutex);
 		kgsl_check_idle(device);
 	}
