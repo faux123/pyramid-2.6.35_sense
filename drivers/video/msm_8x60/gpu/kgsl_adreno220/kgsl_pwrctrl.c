@@ -827,14 +827,14 @@ int kgsl_pwrctrl_wake(struct kgsl_device *device)
 	if (device->state == KGSL_STATE_SLUMBER)
 		_wake_from_slumber(device);
 
-	if (device->state != KGSL_STATE_NAP) {
-		kgsl_pwrctrl_axi(device, KGSL_PWRFLAGS_AXI_ON);
-		kgsl_pwrctrl_pwrlevel_change(device,
-				device->pwrctrl.thermal_pwrlevel);
-	}
-
 	/* Turn on the core clocks */
 	status = kgsl_pwrctrl_clk(device, KGSL_PWRFLAGS_CLK_ON);
+	if (device->state != KGSL_STATE_NAP) {
+		if (device->pwrctrl.idle_pass)
+			kgsl_pwrctrl_pwrlevel_change(device,
+					device->pwrctrl.thermal_pwrlevel);
+		kgsl_pwrctrl_axi(device, KGSL_PWRFLAGS_AXI_ON);
+	}
 
 	/* Enable state before turning on irq */
 	device->state = KGSL_STATE_ACTIVE;
