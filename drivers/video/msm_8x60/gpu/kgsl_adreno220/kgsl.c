@@ -1782,16 +1782,16 @@ done:
 
 static int kgsl_pm_suspend(struct device *dev)
 {
-	pm_message_t arg = {0};
+	//pm_message_t arg = {0};
 	dev_dbg(dev, "pm: suspending...\n");
-	kgsl_suspend(NULL, arg);
+	//kgsl_suspend(NULL, arg);
 	return 0;
 }
 
 static int kgsl_pm_resume(struct device *dev)
 {
 	dev_dbg(dev, "pm: resuming...\n");
-	kgsl_resume(NULL);
+	//kgsl_resume(NULL);
 	return 0;
 }
 
