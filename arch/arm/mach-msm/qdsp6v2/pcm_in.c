@@ -28,7 +28,6 @@
 #include <mach/debug_mm.h>
 #include <mach/qdsp6v2/audio_dev_ctl.h>
 #include <mach/qdsp6v2/apr_audio.h>
-#include <linux/wakelock.h>
 #include <mach/qdsp6v2/q6asm.h>
 #include <linux/rtc.h>
 
@@ -59,8 +58,6 @@ struct pcm {
 	atomic_t in_enabled;
 	atomic_t in_opened;
 	atomic_t in_stopped;
-	struct wake_lock wakelock;
-	struct wake_lock idlelock;
 };
 
 static atomic_t pcm_opened = ATOMIC_INIT(0);
@@ -83,19 +80,6 @@ void pcm_in_cb(uint32_t opcode, uint32_t token,
 		break;
 	}
 	spin_unlock_irqrestore(&pcm->dsp_lock, flags);
-}
-static void pcm_in_prevent_sleep(struct pcm *audio)
-{
-	pr_debug("%s:\n", __func__);
-	wake_lock(&audio->wakelock);
-	wake_lock(&audio->idlelock);
-}
-
-static void pcm_in_allow_sleep(struct pcm *audio)
-{
-	pr_debug("%s:\n", __func__);
-	wake_unlock(&audio->wakelock);
-	wake_unlock(&audio->idlelock);
 }
 
 static void pcm_in_get_dsp_buffers(struct pcm *pcm,
@@ -204,7 +188,7 @@ static long pcm_in_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			rc = -EFAULT;
 			break;
 		}
-		pcm_in_prevent_sleep(pcm);
+
 		atomic_set(&pcm->in_enabled, 1);
 
 		while (cnt++ < pcm->buffer_count)
@@ -333,7 +317,6 @@ static int pcm_in_open(struct inode *inode, struct file *file)
 {
 	struct pcm *pcm;
 	int rc = 0;
-	char name[24];
 	struct timespec ts;
 	struct rtc_time tm;
 
@@ -373,10 +356,6 @@ static int pcm_in_open(struct inode *inode, struct file *file)
 	atomic_set(&pcm->in_enabled, 0);
 	atomic_set(&pcm->in_count, 0);
 	atomic_set(&pcm->in_opened, 1);
-	snprintf(name, sizeof name, "pcm_in_%x", pcm->ac->session);
-	wake_lock_init(&pcm->wakelock, WAKE_LOCK_SUSPEND, name);
-	snprintf(name, sizeof name, "pcm_in_idle_%x", pcm->ac->session);
-	wake_lock_init(&pcm->idlelock, WAKE_LOCK_IDLE, name);
 
 	pcm->rec_mode = VOC_REC_NONE;
 
@@ -394,9 +373,6 @@ static int pcm_in_open(struct inode *inode, struct file *file)
 fail:
 	if (pcm->ac)
 		q6asm_audio_client_free(pcm->ac);
-	pcm_in_allow_sleep(pcm);
-	wake_lock_destroy(&pcm->wakelock);
-	wake_lock_destroy(&pcm->idlelock);
 	kfree(pcm);
 	atomic_set(&pcm_opened, 0);
 	return rc;
