@@ -615,6 +615,24 @@ static struct msm_bus_vectors grp2d0_init_vectors[] = {
 	},
 };
 
+static struct msm_bus_vectors grp2d0_nominal_low_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_GRAPHICS_2D_CORE1,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 0,
+		.ib = 1118000000U,
+	},
+};
+
+static struct msm_bus_vectors grp2d0_nominal_high_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_GRAPHICS_2D_CORE1,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 0,
+		.ib = 1242000000U,
+	},
+};
+
 static struct msm_bus_vectors grp2d0_max_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_GRAPHICS_2D_CORE0,
@@ -627,6 +645,14 @@ static struct msm_bus_vectors grp2d0_max_vectors[] = {
 static struct msm_bus_paths grp2d0_bus_scale_usecases[] = {
 	{
 		ARRAY_SIZE(grp2d0_init_vectors),
+		grp2d0_init_vectors,
+	},
+	{
+		ARRAY_SIZE(grp2d0_nominal_low_vectors),
+		grp2d0_init_vectors,
+	},
+	{
+		ARRAY_SIZE(grp2d0_nominal_high_vectors),
 		grp2d0_init_vectors,
 	},
 	{
@@ -650,6 +676,24 @@ static struct msm_bus_vectors grp2d1_init_vectors[] = {
 	},
 };
 
+static struct msm_bus_vectors grp2d1_nominal_low_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_GRAPHICS_2D_CORE1,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 0,
+		.ib = 1118000000U,
+	},
+};
+
+static struct msm_bus_vectors grp2d1_nominal_high_vectors[] = {
+	{
+		.src = MSM_BUS_MASTER_GRAPHICS_2D_CORE1,
+		.dst = MSM_BUS_SLAVE_EBI_CH0,
+		.ab = 0,
+		.ib = 1242000000U,
+	},
+};
+
 static struct msm_bus_vectors grp2d1_max_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_GRAPHICS_2D_CORE1,
@@ -663,6 +707,14 @@ static struct msm_bus_paths grp2d1_bus_scale_usecases[] = {
 	{
 		ARRAY_SIZE(grp2d1_init_vectors),
 		grp2d1_init_vectors,
+	},
+	{
+		ARRAY_SIZE(grp2d1_nominal_low_vectors),
+		grp2d0_init_vectors,
+	},
+	{
+		ARRAY_SIZE(grp2d1_nominal_high_vectors),
+		grp2d0_init_vectors,
 	},
 	{
 		ARRAY_SIZE(grp2d1_max_vectors),
@@ -695,7 +747,15 @@ struct platform_device msm_device_rng = {
 struct kgsl_platform_data kgsl_pdata = {
 	.pwrlevel_2d = {
 		{
-			.gpu_freq = 200000000,
+			.gpu_freq = 145455000,
+			.bus_freq = 3,
+		},
+		{
+			.gpu_freq = 160000000,
+			.bus_freq = 2,
+		},
+		{
+			.gpu_freq = 177778000,
 			.bus_freq = 1,
 		},
 		{
@@ -704,7 +764,7 @@ struct kgsl_platform_data kgsl_pdata = {
 		},
 	},
 	.init_level_2d = 0,
-	.num_levels_2d = 2,
+	.num_levels_2d = 4,
 	.pwrlevel_3d = {
 #ifdef GPU_TURBO_BOOST
 		{
