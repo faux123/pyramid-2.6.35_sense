@@ -62,6 +62,8 @@ static int __secure_tz_entry(u32 cmd, u32 val)
 }
 #endif /* CONFIG_MSM_SECURE_IO */
 
+/* Returns the requested update to our power level. *
+ * Either up/down (-1/1) a level, or stay the same (0). */
 static inline int kgsl_pwrctrl_tz_update(u32 idle)
 {
 	return __secure_tz_entry(TZ_UPDATE_ID, idle);

@@ -195,10 +195,13 @@ irqreturn_t kgsl_g12_isr(int irq, void *data)
 		}
 	}
 
-	if ((device->pwrctrl.nap_allowed == true) &&
-		(device->requested_state == KGSL_STATE_NONE)) {
-		device->requested_state = KGSL_STATE_NAP;
-		queue_work(device->work_queue, &device->idle_check_ws);
+	if (device->requested_state == KGSL_STATE_NONE) {
+		if (device->pwrctrl.nap_allowed == true) {
+			device->requested_state = KGSL_STATE_NAP;
+			queue_work(device->work_queue, &device->idle_check_ws);
+		} else if (device->pwrctrl.idle_pass == true) {
+			queue_work(device->work_queue, &device->idle_check_ws);
+		}
 	}
 
 	mod_timer(&device->idle_timer,
@@ -368,6 +371,7 @@ kgsl_g12_init_pwrctrl(struct kgsl_device *device)
 		KGSL_PWRFLAGS_AXI_OFF | KGSL_PWRFLAGS_POWER_OFF |
 		KGSL_PWRFLAGS_IRQ_OFF;
 	device->pwrctrl.nap_allowed = pdata->nap_allowed;
+	device->pwrctrl.idle_pass = pdata->idle_pass;
 	device->pwrctrl.grp_clk = clk;
 	device->pwrctrl.grp_src_clk = clk;
 	device->pwrctrl.grp_pclk = pclk;
