@@ -74,6 +74,33 @@ static inline void kgsl_pwrctrl_tz_reset(void)
 	__secure_tz_entry(TZ_RESET_ID, 0);
 }
 
+#ifdef CONFIG_KGSL_2D_SCALING
+static inline int kgsl_pwrctrl_2d_update(struct kgsl_device *device)
+{
+	int val = 0;
+
+	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
+	struct kgsl_busy *b = &device->pwrctrl.busy;
+
+	/* it's currently busy */
+	if (b->on_time >= 500) {
+		if (pwr->active_pwrlevel == 0)
+			val = 0; /* already maxed, so do nothing */
+		else if ((pwr->active_pwrlevel > 0) && 
+			(pwr->active_pwrlevel <= (pwr->num_pwrlevels - 1)))
+			val = -1; /* bump up to next pwrlevel */
+	/* idle case */
+	} else {
+		if ((pwr->active_pwrlevel >= 0) && 
+			(pwr->active_pwrlevel < (pwr->num_pwrlevels - 1)))
+			val = 1; /* above min, lower it */
+		else if (pwr->active_pwrlevel == (pwr->num_pwrlevels - 1))
+			val = 0; /* already @ min, so do nothing */
+	}
+	return val;
+}
+#endif
+
 void kgsl_pwrctrl_pwrlevel_change(struct kgsl_device *device,
 					unsigned int new_level)
 {
@@ -379,6 +406,15 @@ static void kgsl_pwrctrl_idle_calc(struct kgsl_device *device)
 	int val;
 	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 	struct kgsl_power_stats stats;
+
+#ifdef CONFIG_KGSL_2D_SCALING
+	if (device->id == KGSL_DEVICE_2D0 || device->id == KGSL_DEVICE_2D1) {
+		val = kgsl_pwrctrl_2d_update(device);
+		if (val)
+			kgsl_pwrctrl_pwrlevel_change(device,
+					pwr->active_pwrlevel + val);
+	}
+#endif
 
 	device->ftbl.device_power_stats(device, &stats);
 
