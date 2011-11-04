@@ -525,7 +525,7 @@ static struct msm_bus_vectors grp3d_init_vectors[] = {
 	},
 };
 
-#ifdef GPU_TURBO_BOOST
+#ifdef CONFIG_GPU_TURBO_BOOST
 static struct msm_bus_vectors grp3d_nominal_low_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_GRAPHICS_3D,
@@ -763,10 +763,10 @@ struct kgsl_platform_data kgsl_pdata = {
 			.bus_freq = 0,
 		},
 	},
-	.init_level_2d = 0,
+	.init_level_2d = 3,
 	.num_levels_2d = 4,
 	.pwrlevel_3d = {
-#ifdef GPU_TURBO_BOOST
+#ifdef CONFIG_GPU_TURBO_BOOST
 		{
 			.gpu_freq = 320000000,
 			.bus_freq = 3,
@@ -802,7 +802,7 @@ struct kgsl_platform_data kgsl_pdata = {
 		},
 #endif /* GPU_TURBO_BOOST */
 	},
-	.init_level_3d = 0,
+	.init_level_3d = 3,
 	.num_levels_3d = 4,
 	.set_grp2d_async = NULL,
 	.set_grp3d_async = NULL,
