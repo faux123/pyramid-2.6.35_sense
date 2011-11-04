@@ -226,4 +226,9 @@ config SEC_LIMIT_MAX_FREQ
 	help
 		Limit Max Freq
 
+config DETECT_BROWSER_STATE
+	bool "detect browser state"
+	help
+		detect browser state by looking at 3D busy bit
+
 endif	# CPU_FREQ

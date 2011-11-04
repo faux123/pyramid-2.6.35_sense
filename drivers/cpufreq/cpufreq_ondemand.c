@@ -818,6 +818,10 @@ static void dbs_check_cpu(struct cpu_dbs_info_s *this_dbs_info)
 	}
 }
 
+#ifdef CONFIG_DETECT_BROWSER_STATE
+extern bool yamato_busy;
+#endif
+
 #ifdef CONFIG_SEC_LIMIT_MAX_FREQ // limit max freq
 
 #include "../../kernel/power/power.h"
@@ -896,7 +900,11 @@ void set_lmf_inactive_load(unsigned long freq)
 
 bool get_lmf_browser_state(void)
 {
+#ifdef CONFIG_DETECT_BROWSER_STATE
+	return yamato_busy;
+#else
 	return lmf_browser_state;
+#endif
 }
 
 bool get_lmf_temp_state(void)
@@ -933,7 +941,11 @@ static void do_dbs_timer(struct work_struct *work)
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 #ifdef _LIMIT_LCD_OFF_CPU_MAX_FREQ_
+#ifdef CONFIG_DETECT_BROWSER_STATE
+	if (!yamato_busy || !lmf_temp_state || !cpufreq_gov_lcd_status)
+#else
 	if (!lmf_browser_state || !lmf_temp_state || !cpufreq_gov_lcd_status)
+#endif
 #else
 	if (!lmf_browser_state || !lmf_temp_state || !(get_suspend_state()==PM_SUSPEND_ON))
 #endif
