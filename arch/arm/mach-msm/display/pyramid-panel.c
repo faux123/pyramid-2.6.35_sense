@@ -76,6 +76,7 @@ static void pyramid_panel_power(int on)
 		}
 
 		ret = regulator_set_voltage(l1_3v, 3100000, 3100000);
+		pr_info("setting l1_3v voltage to: %d\n", 3100000);
 		if (ret) {
 			pr_err("%s: error setting l1_3v voltage\n", __func__);
 			goto fail;
@@ -83,6 +84,7 @@ static void pyramid_panel_power(int on)
 
 		if (system_rev >= 1) {
 			ret = regulator_set_voltage(l4_1v8, 1800000, 1800000);
+			pr_info("setting l4_1v8 voltage to: %d\n", 1800000);
 			if (ret) {
 				pr_err("%s: error setting l4_1v8 voltage\n", __func__);
 				goto fail;
@@ -543,8 +545,10 @@ static unsigned char pyd_shp_shrink_pwm(int br)
 }
 
 #define AUO_PWM_MIN                     9	/* 3.5% of max pwm */
-#define AUO_PWM_DEFAULT                 87	/* 34% of max pwm  */
-#define AUO_PWM_MAX                     255	/* 100% of max pwm  */
+//#define AUO_PWM_DEFAULT                 87	/* 34% of max pwm  */
+//#define AUO_PWM_MAX                     255	/* 100% of max pwm  */
+#define AUO_PWM_DEFAULT                 69	/* 27% of max pwm  */
+#define AUO_PWM_MAX                     194	/* 76% of max pwm  */
 
 static unsigned char pyd_auo_shrink_pwm(int br)
 {
