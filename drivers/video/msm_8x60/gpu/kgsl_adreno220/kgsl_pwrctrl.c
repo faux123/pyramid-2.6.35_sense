@@ -83,7 +83,7 @@ static inline int kgsl_pwrctrl_2d_update(struct kgsl_device *device)
 	struct kgsl_busy *b = &device->pwrctrl.busy;
 
 	/* it's currently busy */
-	if (b->on_time >= 500) {
+	if (b->on_time >= 5) {	/* make it so it's above noise level */
 		if (pwr->active_pwrlevel == 0)
 			val = 0; /* already maxed, so do nothing */
 		else if ((pwr->active_pwrlevel > 0) && 
@@ -302,7 +302,7 @@ static int kgsl_pwrctrl_scaling_governor_store(struct device *dev,
 	mutex_lock(&device->mutex);
 	pwr->idle_pass = reset;
 	if (pwr->idle_pass == 0)
-		kgsl_pwrctrl_pwrlevel_change(device, pwr->thermal_pwrlevel);
+		kgsl_pwrctrl_pwrlevel_change(device, KGSL_PWRLEVEL_TURBO);
 	mutex_unlock(&device->mutex);
 
 	return count;
@@ -438,6 +438,8 @@ static void kgsl_pwrctrl_idle_calc(struct kgsl_device *device)
 	}
 
 	val = kgsl_pwrctrl_tz_update(stats.total_time - stats.busy_time);
+	//pr_info("kgsl 3D total time: %ld, busy time: %ld\n", (long int)stats.total_time, (long int)stats.busy_time);
+	//pr_info("kgsl TZ value: %d\n", val);
 	if (val)
 		kgsl_pwrctrl_pwrlevel_change(device,
 					pwr->active_pwrlevel + val);
@@ -684,6 +686,10 @@ void kgsl_pwrctrl_close(struct kgsl_device *device)
 	pwr->power_flags = 0;
 }
 
+#ifdef CONFIG_DETECT_BROWSER_STATE
+bool yamato_busy = false;
+#endif
+
 void kgsl_idle_check(struct work_struct *work)
 {
 	struct kgsl_device *device = container_of(work, struct kgsl_device,
@@ -694,6 +700,15 @@ void kgsl_idle_check(struct work_struct *work)
 		(device->requested_state != KGSL_STATE_SLEEP) &&
 		(device->requested_state != KGSL_STATE_SLUMBER))
 		kgsl_pwrctrl_idle_calc(device);
+
+#ifdef CONFIG_DETECT_BROWSER_STATE
+		if (device->id == KGSL_DEVICE_YAMATO) {
+			if (device->pwrctrl.active_pwrlevel >= 1)
+				yamato_busy = true;
+			else
+				yamato_busy = false;
+		}
+#endif
 
 	if (device->state & (KGSL_STATE_ACTIVE | KGSL_STATE_NAP)) {
 		if (kgsl_pwrctrl_sleep(device) != 0) {
@@ -870,7 +885,7 @@ int kgsl_pwrctrl_wake(struct kgsl_device *device)
 	if (device->state != KGSL_STATE_NAP) {
 		if (device->pwrctrl.idle_pass)
 			kgsl_pwrctrl_pwrlevel_change(device,
-					device->pwrctrl.thermal_pwrlevel);
+					KGSL_PWRLEVEL_NOMINAL);
 		kgsl_pwrctrl_axi(device, KGSL_PWRFLAGS_AXI_ON);
 	}
 

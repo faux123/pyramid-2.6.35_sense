@@ -399,10 +399,10 @@ void kgsl_late_resume_driver(struct early_suspend *h)
 					struct kgsl_device, display_off);
 
 	KGSL_PWR_INFO("late resume start\n");
-	/* faux123: special case for device 0, restore back to turbo state */
+	/* faux123: special case for device 0, restore back to NOMINAL state */
 	device = kgsl_driver.devp[0];
 	mutex_lock(&device->mutex);
-	kgsl_pwrctrl_pwrlevel_change(device, KGSL_PWRLEVEL_TURBO);
+	kgsl_pwrctrl_pwrlevel_change(device, KGSL_PWRLEVEL_NOMINAL);
 	mutex_unlock(&device->mutex);
 
 	/* faux123: start from device 1, because device 0 has hw bug
