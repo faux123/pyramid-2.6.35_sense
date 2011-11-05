@@ -83,7 +83,7 @@ static inline int kgsl_pwrctrl_2d_update(struct kgsl_device *device)
 	struct kgsl_busy *b = &device->pwrctrl.busy;
 
 	/* it's currently busy */
-	if (b->on_time >= 5) {	/* make it so it's above noise level */
+	if (b->on_time >= 50) {	/* make it so it's above noise level */
 		if (pwr->active_pwrlevel == 0)
 			val = 0; /* already maxed, so do nothing */
 		else if ((pwr->active_pwrlevel > 0) && 

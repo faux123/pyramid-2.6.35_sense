@@ -763,7 +763,7 @@ struct kgsl_platform_data kgsl_pdata = {
 			.bus_freq = 0,
 		},
 	},
-	.init_level_2d = 3,
+	.init_level_2d = 1,
 	.num_levels_2d = 4,
 	.pwrlevel_3d = {
 #ifdef CONFIG_GPU_TURBO_BOOST
@@ -802,7 +802,7 @@ struct kgsl_platform_data kgsl_pdata = {
 		},
 #endif /* GPU_TURBO_BOOST */
 	},
-	.init_level_3d = 3,
+	.init_level_3d = 1,
 	.num_levels_3d = 4,
 	.set_grp2d_async = NULL,
 	.set_grp3d_async = NULL,

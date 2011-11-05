@@ -51,7 +51,7 @@
 
 #define KGSL_NUM_OF_PWRLEVELS		4	/* this MUST match device-msm8x60.c num_levels_*d */
 #define KGSL_PWRLEVEL_TURBO		0
-#define KGSL_PWRLEVEL_NOMINAL		(KGSL_NUM_OF_PWRLEVELS - 1)
+#define KGSL_PWRLEVEL_NOMINAL		1
 #define KGSL_DEFAULT_PWRLEVEL		KGSL_PWRLEVEL_NOMINAL
 
 struct kgsl_busy {
