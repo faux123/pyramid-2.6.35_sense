@@ -42,6 +42,7 @@
 #include <linux/string.h>
 #include <linux/snappy.h>
 #include <asm/unaligned.h>
+#include <linux/vmalloc.h>
 
 #define CRASH_UNLESS(x) BUG_ON(!(x))
 #define CHECK(cond) CRASH_UNLESS(cond)
