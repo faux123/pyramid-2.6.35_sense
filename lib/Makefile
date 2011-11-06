@@ -108,6 +108,10 @@ obj-$(CONFIG_GENERIC_ATOMIC64) += atomic64.o
 
 obj-$(CONFIG_ATOMIC64_SELFTEST) += atomic64_test.o
 
+CFLAGS_snappy.o += $(call cc-disable-warning, declaration-after-statement) \
+		   -DNDEBUG=1
+obj-$(CONFIG_SNAPPY) += snappy.o
+
 hostprogs-y	:= gen_crc32table
 clean-files	:= crc32table.h
 

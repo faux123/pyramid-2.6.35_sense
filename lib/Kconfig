@@ -258,4 +258,12 @@ config GENERIC_ATOMIC64
 config LRU_CACHE
 	tristate
 
+config SNAPPY
+       tristate "Snappy compressor"
+       help
+          Add the snappy compressor. This is a reasonable compressor that
+	  compresses and decompresses extremly fast. In general it's a better
+	  replacement for LZO.
+
+
 endmenu
