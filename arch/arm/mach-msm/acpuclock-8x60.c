@@ -54,7 +54,7 @@
 #define L_VAL_SCPLL_CAL_MIN	0x08 /* =  432 MHz with 27MHz source */
 
 #ifndef CONFIG_SYNC_L2_CACHE_FREQ
-#define L_VAL_SCPLL_CAL_MAX	0x21 /* = 1782 MHz with 27MHz source */
+#define L_VAL_SCPLL_CAL_MAX	0x20 /* = 1728 MHz with 27MHz source */
 #else
 #define L_VAL_SCPLL_CAL_MAX	0x1D /* = 1566 MHz with 27MHz source */
 #endif
@@ -99,7 +99,7 @@
 
 #ifndef CONFIG_SYNC_L2_CACHE_FREQ
 /* frequency defaults */
-#define FREQ_TABLE_SIZE			35
+#define FREQ_TABLE_SIZE			34
 #else
 /* frequency defaults */
 #define FREQ_TABLE_SIZE			31
@@ -344,13 +344,13 @@ static struct clkctl_acpu_speed acpu_freq_tbl_fast[] = {
   { {1, 1}, 1296000,  ACPU_SCPLL, 0, 0, 1, 0x18, L2(17), 1125000, 0x03006000},
   { {1, 1}, 1350000,  ACPU_SCPLL, 0, 0, 1, 0x19, L2(18), 1150000, 0x03006000},
   { {1, 1}, 1404000,  ACPU_SCPLL, 0, 0, 1, 0x1A, L2(19), 1175000, 0x03006000},
-  { {1, 1}, 1458000,  ACPU_SCPLL, 0, 0, 1, 0x1B, L2(19), 1187500, 0x03006000},
-  { {1, 1}, 1512000,  ACPU_SCPLL, 0, 0, 1, 0x1C, L2(19), 1200000, 0x03006000},
-  { {1, 1}, 1566000,  ACPU_SCPLL, 0, 0, 1, 0x1D, L2(20), 1225000, 0x03006000},
-  { {1, 1}, 1620000,  ACPU_SCPLL, 0, 0, 1, 0x1E, L2(20), 1250000, 0x03006000},
-  { {1, 1}, 1674000,  ACPU_SCPLL, 0, 0, 1, 0x1F, L2(20), 1275000, 0x03006000},
-  { {1, 1}, 1728000,  ACPU_SCPLL, 0, 0, 1, 0x20, L2(21), 1300000, 0x03006000},
-  { {1, 1}, 1782000,  ACPU_SCPLL, 0, 0, 1, 0x21, L2(21), 1325000, 0x03006000},
+  { {1, 1}, 1458000,  ACPU_SCPLL, 0, 0, 1, 0x1B, L2(20), 1187500, 0x03006000},
+  { {1, 1}, 1512000,  ACPU_SCPLL, 0, 0, 1, 0x1C, L2(21), 1200000, 0x03006000},
+  { {1, 1}, 1566000,  ACPU_SCPLL, 0, 0, 1, 0x1D, L2(22), 1225000, 0x03006000},
+  { {1, 1}, 1620000,  ACPU_SCPLL, 0, 0, 1, 0x1E, L2(22), 1250000, 0x03006000},
+  { {1, 1}, 1674000,  ACPU_SCPLL, 0, 0, 1, 0x1F, L2(22), 1275000, 0x03006000},
+  { {1, 1}, 1728000,  ACPU_SCPLL, 0, 0, 1, 0x20, L2(22), 1300000, 0x03006000},
+//  { {1, 1}, 1782000,  ACPU_SCPLL, 0, 0, 1, 0x21, L2(22), 1325000, 0x03006000},
   { {0, 0}, 0 },
 };
 #else
@@ -880,7 +880,11 @@ static void __init scpll_init(int sc_pll)
 	 * might not use the full range of calibrated frequencies, but this
 	 * simplifies changes required for future increases in max CPU freq.
 	 */
+#ifdef CONFIG_SYNC_L2_CACHE_FREQ
 	regval = (L_VAL_SCPLL_CAL_MAX << 29) | (L_VAL_SCPLL_CAL_MIN << 16);
+#else
+	regval = (L_VAL_SCPLL_CAL_MAX << 30) | (L_VAL_SCPLL_CAL_MIN << 16);
+#endif
 	writel(regval, sc_pll_base[sc_pll] + SCPLL_CAL_OFFSET);
 
 	/* Start calibration */
