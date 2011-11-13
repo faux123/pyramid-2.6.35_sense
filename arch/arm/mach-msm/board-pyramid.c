@@ -2333,7 +2333,7 @@ static struct htc_headset_8x60_platform_data htc_headset_8x60_data = {
 	.adc_amux	= PM_MPP_AIN_AMUX_CH5,
 	.adc_mic_bias	= {HS_DEF_MIC_ADC_15_BIT_MIN,
 			   HS_DEF_MIC_ADC_15_BIT_MAX},
-	.adc_remote	= {0, 1251, 1446, 3072, 3615, 6296},
+	.adc_remote	= {0, 722, 723, 2746, 2747, 6603},
 };
 
 static struct platform_device htc_headset_8x60 = {
@@ -2356,11 +2356,26 @@ static struct headset_adc_config htc_headset_mgr_config[] = {
 	{
 		.type = HEADSET_MIC,
 		.adc_max = 28920,
-		.adc_min = 7230,
+		.adc_min = 21705,
+	},
+	{
+		.type = HEADSET_BEATS,
+		.adc_max = 21704,
+		.adc_min = 14605,
+	},
+	{
+		.type = HEADSET_BEATS_SOLO,
+		.adc_max = 14604,
+		.adc_min = 8676,
+	},
+	{
+		.type = HEADSET_NO_MIC, /* HEADSET_INDICATOR */
+		.adc_max = 8675,
+		.adc_min = 5784,
 	},
 	{
 		.type = HEADSET_NO_MIC,
-		.adc_max = 7229,
+		.adc_max = 5783,
 		.adc_min = 0,
 	},
 };
@@ -4921,9 +4936,9 @@ static void __init pyramid_init(void)
 	msm8x60_init_camera();
 
 	/* Accessory */
-	printk(KERN_INFO "[HS_BOARD] (%s) system_rev = %d\n", __func__,
-	       system_rev);
-	if (system_rev > 2) {
+	printk(KERN_INFO "[HS_BOARD] (%s) system_rev = %d, LE = %d\n", __func__,
+	       system_rev, (speed_bin == 0x1) ? 1 : 0);
+	if (system_rev > 2 || speed_bin == 0x1) {
 		htc_headset_pmic_data.key_gpio =
 			PM8058_GPIO_PM_TO_SYS(PYRAMID_AUD_REMO_PRES);
 		htc_headset_mgr_data.headset_config_num =
