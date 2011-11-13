@@ -47,6 +47,9 @@ static	uint8_t	dsHpdStatus = 0;
 #define	CLR_BIT(saddr,offset,bitnumber)		I2C_WriteByte(saddr, offset, I2C_ReadByte(saddr, offset) & ~(1<<bitnumber))
 #define	DISABLE_DISCOVERY				CLR_BIT(TPI_SLAVE_ADDR, 0x90, 0);
 #define	ENABLE_DISCOVERY				SET_BIT(TPI_SLAVE_ADDR, 0x90, 0);
+#define INTR_2_DESIRED_MASK                     (BIT_0)
+#define UNMASK_INTR_2_INTERRUPTS                I2C_WriteByte(TPI_SLAVE_ADDR, 0x76, INTR_2_DESIRED_MASK)
+#define MASK_INTR_2_INTERRUPTS                  I2C_WriteByte(TPI_SLAVE_ADDR, 0x76, 0x00)
 #define	INTR_4_DESIRED_MASK				(BIT_0 | BIT_2 | BIT_3 | BIT_4 | BIT_5 | BIT_6)
 #define	UNMASK_INTR_4_INTERRUPTS		I2C_WriteByte(TPI_SLAVE_ADDR, 0x78, INTR_4_DESIRED_MASK)
 #define	MASK_INTR_4_INTERRUPTS			I2C_WriteByte(TPI_SLAVE_ADDR, 0x78, 0x00)
@@ -151,10 +154,18 @@ void	TPI_Poll(void)
 			TPI_DEBUG_PRINT(("Drv: rsen = %lu time = %lu\n", rsenCheckTimeout, jiffies));
 
 				if (initCbus) {
-	                                I2C_WriteByte(CBUS_SLAVE_ADDR,0x13, 0x20) ;
-	                                I2C_WriteByte(CBUS_SLAVE_ADDR,0x14, 0x01) ;
-					I2C_WriteByte(CBUS_SLAVE_ADDR,0x12, 0x08) ;
-					initCbus = false;
+					if (!(I2C_ReadByte(TPI_SLAVE_ADDR, 0x09) & BIT_2)) { /* if Rsen=0 , should be dongle has no power */
+						TPI_DEBUG_PRINT(("400ms exp, Rsen=0,discnct\n"));
+						DISABLE_DISCOVERY;                    /* Page0Reg0x90[0]=0 */
+						ENABLE_DISCOVERY;                     /* Page0Reg0x90[0]=1 */
+						MhlTxDrvProcessDisconnection();
+						return ;
+					} else {
+						I2C_WriteByte(CBUS_SLAVE_ADDR, 0x13, 0x20) ;
+						I2C_WriteByte(CBUS_SLAVE_ADDR, 0x14, 0x01) ;
+						I2C_WriteByte(CBUS_SLAVE_ADDR, 0x12, 0x08) ;
+						initCbus = false;
+					}
 				}
 				Int1RsenIsr();
 				if(deglitchingRsenNow)
@@ -634,7 +645,10 @@ static	void	Int4Isr( void )
 
 	if(reg74 & BIT_2)
 	{
+		initCbus = true;  /* Force reinit CBus */
 		MhlTxDrvProcessConnection();
+		UNMASK_INTR_2_INTERRUPTS;
+		UNMASK_INTR_4_INTERRUPTS;
 #ifdef CONFIG_CABLE_DETECT_ACCESSORY
 		update_mhl_status(true);
 #endif
@@ -879,6 +893,9 @@ static void MhlCbusIsr( void )
 	}
 	if((cbusInt & BIT_5) || (cbusInt & BIT_6))
 	{
+		if (initCbus && (cbusInt&BIT_5))
+			return; /* don't clear pending int, until 400ms sw delay expired */
+
 		gotData[0] = CBusProcessErrors(cbusInt);
 	}
 	if(cbusInt)
