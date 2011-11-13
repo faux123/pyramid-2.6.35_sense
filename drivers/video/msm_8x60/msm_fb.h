@@ -190,6 +190,19 @@ int msm_fb_detect_client(const char *name);
 void msm_fb_config_backlight(struct msm_fb_data_type *mfd);
 #endif
 
+#if (defined(CONFIG_USB_FUNCTION_PROJECTOR) || defined(CONFIG_USB_ANDROID_PROJECTOR))
+/* For USB Projector to quick access the frame buffer info */
+struct msm_fb_info {
+    unsigned char *fb_addr;
+    int msmfb_area;
+    int xres;
+    int yres;
+};
+
+extern int msmfb_get_var(struct msm_fb_info *tmp);
+extern int msmfb_get_fb_area(void);
+#endif
+
 void fill_black_screen(void);
 void unfill_black_screen(void);
 

@@ -133,6 +133,42 @@ void msm_fb_debugfs_file_create(struct dentry *root, const char *name,
 }
 #endif
 
+#if (defined(CONFIG_USB_FUNCTION_PROJECTOR) || defined(CONFIG_USB_ANDROID_PROJECTOR))
+static spinlock_t fb_data_lock = SPIN_LOCK_UNLOCKED;
+static struct msm_fb_info msm_fb_data;
+int msmfb_get_var(struct msm_fb_info *tmp)
+{
+    unsigned long flags;
+    spin_lock_irqsave(&fb_data_lock, flags);
+    memcpy(tmp, &msm_fb_data, sizeof(msm_fb_data));
+    spin_unlock_irqrestore(&fb_data_lock, flags);
+    return 0;
+}
+
+/* projector need this, and very much */
+int msmfb_get_fb_area(void)
+{
+    int area;
+    unsigned long flags;
+    spin_lock_irqsave(&fb_data_lock, flags);
+    area = msm_fb_data.msmfb_area;
+    spin_unlock_irqrestore(&fb_data_lock, flags);
+    return area;
+}
+
+static void msmfb_set_var(unsigned char *addr, int area)
+{
+    unsigned long flags;
+
+    spin_lock_irqsave(&fb_data_lock, flags);
+    msm_fb_data.fb_addr = addr;
+    msm_fb_data.msmfb_area = area;
+    spin_unlock_irqrestore(&fb_data_lock, flags);
+
+}
+#endif
+
+
 int msm_fb_cursor(struct fb_info *info, struct fb_cursor *cursor)
 {
 	struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
@@ -1111,6 +1147,13 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 					       (panel_info->mode2_bpp+7)/8) *
 			    panel_info->mode2_yres * mfd->fb_page), PAGE_SIZE);
 
+#if (defined(CONFIG_USB_FUNCTION_PROJECTOR) || defined(CONFIG_USB_ANDROID_PROJECTOR))
+    if(mfd->index == 0)
+    {
+        msm_fb_data.xres = ALIGN(panel_info->xres, 32);
+        msm_fb_data.yres = panel_info->yres;
+    }
+#endif
 
 
 	mfd->var_xres = panel_info->xres;
@@ -1166,6 +1209,13 @@ static int msm_fb_register(struct msm_fb_data_type *mfd)
 
 	fbi->screen_base = fbram;
 	fbi->fix.smem_start = (unsigned long)fbram_phys;
+
+#if (defined(CONFIG_USB_FUNCTION_PROJECTOR) || defined(CONFIG_USB_ANDROID_PROJECTOR))
+    if(mfd->index == 0)
+    {
+        msmfb_set_var(fbi->screen_base, 0);
+    }
+#endif
 
 	memset(fbi->screen_base, 0x0, fix->smem_len);
 
@@ -1475,6 +1525,10 @@ static int msm_fb_pan_display(struct fb_var_screeninfo *var,
 
 		dirtyPtr = &dirty;
 	}
+
+#if (defined(CONFIG_USB_FUNCTION_PROJECTOR) || defined(CONFIG_USB_ANDROID_PROJECTOR))
+    if(mfd->index == 0) msmfb_set_var(mfd->fbi->screen_base, var->yoffset);
+#endif
 
 	down(&msm_fb_pan_sem);
 	mdp_set_dma_pan_info(info, dirtyPtr,
