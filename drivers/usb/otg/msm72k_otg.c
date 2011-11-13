@@ -1203,7 +1203,7 @@ static irqreturn_t msm_otg_irq(int irq, void *data)
 		work = 1;
 	} else if (sts & STS_PCI) {
 		pc = readl(USB_PORTSC);
-		USBH_DEBUG("%s: portsc = %x\n", __func__, pc);
+		USBH_DEBUG("%s: portsc = %x, sts = %x\n", __func__, pc, sts);
 		ret = IRQ_NONE;
 		/* HCD Acks PCI interrupt. We use this to switch
 		 * between different OTG states.
@@ -1230,6 +1230,15 @@ static irqreturn_t msm_otg_irq(int irq, void *data)
 				USBH_DEBUG("%s A_CONN clear\n", __func__);
 				clear_bit(A_CONN, &dev->inputs);
 			}
+			break;
+		case OTG_STATE_B_IDLE:
+		case OTG_STATE_A_IDLE:
+		case OTG_STATE_A_WAIT_VRISE:
+		case OTG_STATE_A_WAIT_VFALL:
+			/* suppress the unknown interrupt */
+			USBH_WARNING("%s: nobody handles IRQ\n", __func__);
+			writel(sts, USB_USBSTS);
+			work = 0;
 			break;
 		default:
 			work = 0;
