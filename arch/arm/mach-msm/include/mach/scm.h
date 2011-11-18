@@ -32,16 +32,24 @@
 #define SCM_SVC_PIL			0x2
 #define SCM_SVC_UTIL			0x3
 #define SCM_SVC_TZ			0x4
+#define SCM_SVC_IO			0x5
+#define SCM_SVC_INFO			0x6
+#define SCM_SVC_SSD			0x7
+#define SCM_SVC_FUSE			0x8
+#define SCM_SVC_PWR			0x9
+#define SCM_SVC_TZSCHEDULER		0xFC
 #define SCM_SVC_OEM			0xFE
 
 #define TZ_HTC_SVC_READ_SIMLOCK_MASK	0x0D
-#define TZ_HTC_SVC_SIMLOCK_UNLOCK		0x0E
+#define TZ_HTC_SVC_SIMLOCK_UNLOCK	0x0E
 #define TZ_HTC_SVC_GET_SECURITY_LEVEL	0x10
-#define TZ_HTC_SVC_MEMPROT				0x15
+#define TZ_HTC_SVC_MEMPROT		0x15
 #define TZ_HTC_SVC_LOG_OPERATOR		0x16
 
 extern int scm_call(u32 svc_id, u32 cmd_id, const void *cmd_buf, size_t cmd_len,
 		void *resp_buf, size_t resp_len);
+
+extern u32 scm_call_atomic1(u32 svc, u32 cmd, u32 arg1);
 
 #define SCM_VERSION(major, minor) (((major) << 16) | ((minor) & 0xFF))
 
