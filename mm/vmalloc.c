@@ -2243,7 +2243,7 @@ struct vm_struct **pcpu_get_vm_areas(const unsigned long *offsets,
 	vms = kzalloc(sizeof(vms[0]) * nr_vms, gfp_mask);
 	vas = kzalloc(sizeof(vas[0]) * nr_vms, gfp_mask);
 	if (!vas || !vms)
-		goto err_free;
+		goto err_free2;
 
 	for (area = 0; area < nr_vms; area++) {
 		vas[area] = kzalloc(sizeof(struct vmap_area), gfp_mask);
@@ -2346,6 +2346,7 @@ err_free:
 		if (vms)
 			kfree(vms[area]);
 	}
+err_free2:
 	kfree(vas);
 	kfree(vms);
 	return NULL;
