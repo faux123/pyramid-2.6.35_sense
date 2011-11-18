@@ -35,10 +35,12 @@
 #include "pm.h"
 #include "smd_private.h"
 #include <mach/restart.h>
+#include <linux/interrupt.h>
 #include <mach/mdm.h>
 #if defined(CONFIG_MSM_RMT_STORAGE_CLIENT)
 #include <linux/rmt_storage_client-8x60.h>
 #endif
+#include <mach/irqs.h>
 
 #define TCSR_WDT_CFG 0x30
 
@@ -50,6 +52,8 @@
 #define PSHOLD_CTL_SU (MSM_TLMM_BASE + 0x820)
 
 static int restart_mode;
+
+int pmic_reset_irq;
 
 struct htc_reboot_params {
 	unsigned reboot_reason;
@@ -127,7 +131,7 @@ void set_ramdump_reason(const char *msg)
 	set_restart_msg(msg? msg: "");
 }
 
-static void msm_power_off(void)
+static void __msm_power_off(int lower_pshold)
 {
 #if defined(CONFIG_MSM_RMT_STORAGE_CLIENT)
 	set_restart_reason(RESTART_REASON_POWEROFF);
@@ -145,13 +149,50 @@ static void msm_power_off(void)
 	writel(1, WDT0_RST);
 	printk(KERN_INFO "back %s\r\n", __func__);
 #endif
-	printk(KERN_NOTICE "Powering off the SoC\n");
+	printk(KERN_CRIT "Powering off the SoC\n");
 	pm8058_reset_pwr_off(0);
 	pm8901_reset_pwr_off(0);
-	secure_writel(0, PSHOLD_CTL_SU);
+	if (lower_pshold)
+		secure_writel(0, PSHOLD_CTL_SU);
+
 	mdelay(10000);
 	printk(KERN_ERR "Powering off has failed\n");
 	return;
+}
+
+static void msm_power_off(void)
+{
+	/* MSM initiated power off, lower ps_hold */
+	__msm_power_off(1);
+}
+
+static void cpu_power_off(void *data)
+{
+	pr_err("PMIC Initiated shutdown %s cpu=%d\n", __func__,
+						smp_processor_id());
+	if (smp_processor_id() == 0)
+		/*
+		 * PMIC initiated power off, do not lower ps_hold, pmic will
+		 * shut msm down
+		 */
+		__msm_power_off(0);
+
+	preempt_disable();
+	while (1)
+		;
+}
+
+static irqreturn_t resout_irq_handler(int irq, void *dev_id)
+{
+	pr_warn("%s PMIC Initiated shutdown\n", __func__);
+	oops_in_progress = 1;
+	smp_call_function_many(cpu_online_mask, cpu_power_off, NULL, 0);
+	if (smp_processor_id() == 0)
+		cpu_power_off(NULL);
+	preempt_disable();
+	while (1)
+		;
+	return IRQ_HANDLED;
 }
 
 static bool console_flushed;
@@ -318,6 +359,7 @@ void arch_reset(char mode, const char *cmd)
 
 static int __init msm_restart_init(void)
 {
+	int rc;
 	modem_cache_flush_done = 0;
 	reboot_params = (void *)MSM_REBOOT_REASON_BASE;
 	arm_pm_restart = arch_reset;
@@ -332,6 +374,16 @@ static int __init msm_restart_init(void)
 #endif
 
 	pm_power_off = msm_power_off;
+
+	if (pmic_reset_irq != 0) {
+		rc = request_any_context_irq(pmic_reset_irq,
+					resout_irq_handler, IRQF_TRIGGER_HIGH,
+					"restart_from_pmic", NULL);
+		if (rc < 0)
+			pr_err("pmic restart irq fail rc = %d\n", rc);
+	} else {
+		pr_warn("no pmic restart interrupt specified\n");
+	}
 
 	return 0;
 }

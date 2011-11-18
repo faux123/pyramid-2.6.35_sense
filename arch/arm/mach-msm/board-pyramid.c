@@ -117,6 +117,7 @@
 #include "rpm-regulator.h"
 #include "sysinfo-8x60.h"
 
+#include <mach/restart.h>
 #include <mach/htc_usb.h>
 #include <mach/rpc_hsusb.h>
 #include <mach/cable_detect.h>
@@ -4862,6 +4863,8 @@ static void __init pyramid_init(void)
 	int ret = 0;
 	struct kobject *properties_kobj;
 	uint32_t raw_speed_bin, speed_bin;
+
+	pmic_reset_irq = PM8058_RESOUT_IRQ(PM8058_IRQ_BASE);
 
 	raw_speed_bin = readl(QFPROM_SPEED_BIN_ADDR);
 	speed_bin = raw_speed_bin & 0xF;
