@@ -641,7 +641,7 @@ static void usb_ept_enable(struct msm_endpoint *ept, int yes,
 			n &= ~(CTRL_RXE);
 	}
 	/* complete all the updates to ept->head before enabling endpoint*/
-	dma_coherent_pre_ops();
+	mb();
 	writel(n, USB_ENDPTCTRL(ept->num));
 #if 0
 	dev_dbg(&ui->pdev->dev, "ept %d %s %s\n",
@@ -681,7 +681,7 @@ static void usb_ept_start(struct msm_endpoint *ept)
 	ept->head->info = 0;
 
 	/* flush buffers before priming ept */
-	dma_coherent_pre_ops();
+	rmb();
 
 	/* during high throughput testing it is observed that
 	 * ept stat bit is not set even thoguh all the data
