@@ -485,6 +485,7 @@ enum usb_connect_type {
 	CONNECT_TYPE_AC,
 	CONNECT_TYPE_9V_AC,
 	CONNECT_TYPE_WIRELESS,
+	CONNECT_TYPE_INTERNAL,
 };
 
 /* START: add USB connected notify function */

@@ -1160,10 +1160,22 @@ static struct platform_device msm_gemini_device = {
 #endif
 
 static struct tps65200_platform_data tps65200_data = {
-	.charger_check = 1,
 	.gpio_chg_stat = PM8058_GPIO_IRQ(PM8058_IRQ_BASE, PYRAMID_CHG_STAT),
 	.gpio_chg_int  = MSM_GPIO_TO_INT(PYRAMID_GPIO_CHG_INT),
 };
+
+#ifdef CONFIG_SUPPORT_DQ_BATTERY
+static int __init check_dq_setup(char *str)
+{
+	if (!strcmp(str, "PASS"))
+		tps65200_data.dq_result = 1;
+	else
+		tps65200_data.dq_result = 0;
+
+	return 1;
+}
+__setup("androidboot.dq=", check_dq_setup);
+#endif
 
 static struct i2c_board_info msm_tps_65200_boardinfo[] __initdata = {
 	{

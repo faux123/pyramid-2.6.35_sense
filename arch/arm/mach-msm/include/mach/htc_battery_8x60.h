@@ -109,4 +109,10 @@ struct htc_battery_platform_data {
 	struct mpp_config_data mpp_data;
 };
 
+enum {
+	BATT_ALARM_DISABLE_MODE,
+	BATT_ALARM_NORMAL_MODE,
+	BATT_ALARM_CRITICAL_MODE,
+};
+
 #endif
