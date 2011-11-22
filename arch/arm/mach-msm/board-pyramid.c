@@ -158,6 +158,11 @@ extern int panel_type;
 extern void sii9234_change_usb_owner(bool bMHL);
 #endif //CONFIG_FB_MSM_HDMI_MHL
 
+#ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_2_PHASE
+int set_two_phase_freq(int cpufreq);
+int intelli_set_two_phase_freq(int cpufreq);
+#endif
+
 static unsigned int engineerid;
 int __init pyd_init_panel(struct resource *res, size_t size);
 
@@ -4925,7 +4930,10 @@ static void __init pyramid_init(void)
 #ifdef CONFIG_PERFLOCK
 	perflock_init(&pyramid_perflock_data);
 #endif
-
+#ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_2_PHASE
+	set_two_phase_freq(1134000);
+	intelli_set_two_phase_freq(1026000);
+#endif
 	msm8x60_init_tlmm();
 	msm8x60_init_gpiomux(msm8x60_htc_gpiomux_cfgs);
 	msm8x60_init_mmc();
