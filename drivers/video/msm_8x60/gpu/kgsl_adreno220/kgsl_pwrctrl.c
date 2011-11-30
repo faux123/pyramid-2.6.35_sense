@@ -810,6 +810,8 @@ int kgsl_pwrctrl_sleep(struct kgsl_device *device)
 				goto slumber;
 			}
 	} else if (device->requested_state == KGSL_STATE_SLUMBER) {
+		if (device->state == KGSL_STATE_INIT)
+			return 0;
 		if (device->ftbl.device_isidle(device))
 			goto slumber;
 	}
@@ -874,7 +876,7 @@ int kgsl_pwrctrl_wake(struct kgsl_device *device)
 
 	BUG_ON(!mutex_is_locked(&device->mutex));
 
-	if (device->state == KGSL_STATE_SUSPEND)
+	if (device->state & (KGSL_STATE_SUSPEND | KGSL_STATE_INIT))
 		return status;
 
 	if (device->state == KGSL_STATE_SLUMBER)
