@@ -74,6 +74,7 @@ static struct gpio_event_input_info pyramid_keypad_input_info = {
 	.info.func = gpio_event_input_func,
 	.flags = GPIOEDF_PRINT_KEYS,
 	.type = EV_KEY,
+	.debounce_time.tv.nsec = 5 * NSEC_PER_MSEC,
 	.keymap = pyramid_keypad_input_map,
 	.keymap_size = ARRAY_SIZE(pyramid_keypad_input_map),
 	.setup_input_gpio = pyramid_setup_input_gpio,
