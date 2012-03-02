@@ -189,14 +189,9 @@ int regulator_suspend_prepare(suspend_state_t state);
 
 #ifdef CONFIG_REGULATOR
 void regulator_has_full_constraints(void);
-void regulator_has_full_constraints_listed(struct regulator_init_data **);
 void regulator_suppress_info_printing(void);
 #else
 static inline void regulator_has_full_constraints(void)
-{
-}
-static inline void regulator_has_full_constraints_listed(
-	struct regulator_init_data *)
 {
 }
 static inline void regulator_suppress_info_printing(void)
